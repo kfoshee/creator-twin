@@ -42,9 +42,9 @@ if row:
     suggs = get_suggested_products(row["creator_id"], limit=8)
     check("at least 3 suggestions for product creator", len(suggs) >= 3)
     # 4. category prompts exist when exact products are thin (or exact products dominate)
+    from creator_twin.intelligence.suggested_products import VALID_TYPES
     types = {s["suggestion_type"] for s in suggs}
-    check("suggestion types populated", bool(types & {"exact_product", "inferred_product",
-                                                      "category_prompt", "comparison_prompt"}))
+    check("suggestion types populated", bool(types) and types <= set(VALID_TYPES))
     check("suggestions have reason labels", all(s["reason_label"] for s in suggs))
 else:
     print("  - skipped live suggestion checks (no creator in DB)")
@@ -54,6 +54,22 @@ check("default persona is first_person_creator_take", DEFAULT_PERSONA_MODE == "f
 check("first-person system prompt exists", "first_person_creator_take" in SYSTEMS)
 check("prompt forbids third-person reporting", "third person" in SYSTEMS["first_person_creator_take"])
 check("prompt forbids false testing claims", "firsthand testing" in SYSTEMS["first_person_creator_take"])
+
+# --- suggestion validation (junk like "Comment 3" / "June 2nd") ---
+from creator_twin.intelligence.suggested_products import (get_fallback_suggestions_for_creator,
+                                                          is_valid_product_suggestion)
+check("'Comment 3' rejected", not is_valid_product_suggestion("Comment 3"))
+check("'comment 2' rejected", not is_valid_product_suggestion("comment 2"))
+check("'June 2nd' rejected", not is_valid_product_suggestion("June 2nd"))
+check("'Part 2' rejected", not is_valid_product_suggestion("Part 2"))
+check("'Robot vacuum deal' accepted", is_valid_product_suggestion("Robot vacuum deal"))
+check("'Air fryer deal' accepted", is_valid_product_suggestion("Air fryer deal"))
+check("'MacBook Pro' accepted", is_valid_product_suggestion("MacBook Pro"))
+fb = get_fallback_suggestions_for_creator({"one_sentence_identity": "Daily Amazon deals and coupon finds"})
+check("deal creator gets deal prompts", any("deal" in f["product_name"].lower() for f in fb)
+      and all(f["suggestion_type"] == "deal_prompt" for f in fb))
+fb2 = get_fallback_suggestions_for_creator({"primary_content_pillars": ["wearable accuracy", "sleep tracking"]})
+check("wearable creator gets wearable prompts", any("tracker" in f["product_name"].lower() for f in fb2))
 
 print(f"\n{PASS} passed, {len(FAIL)} failed" + (f": {FAIL}" if FAIL else ""))
 sys.exit(1 if FAIL else 0)

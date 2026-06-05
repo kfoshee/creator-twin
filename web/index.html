@@ -170,6 +170,7 @@ button{font-family:inherit}
 .scard:hover{box-shadow:var(--shadow2);transform:translateY(-2px);border-color:rgba(139,92,246,.35)}
 .simg{position:relative;width:50px;height:50px;border-radius:10px;background:var(--grad);display:grid;place-items:center;font-size:19px;font-weight:900;color:rgba(255,255,255,.9);flex-shrink:0;overflow:hidden;border:1px solid var(--br)}
 .simg img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#fff;padding:4px}
+.simg.icon{background:#f3eefe;color:var(--purple)}
 .sbody{min-width:0;display:flex;flex-direction:column;gap:3px}
 .scard .sname{font-size:12.5px;font-weight:700;letter-spacing:-.01em;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .scard .scta{display:none}
@@ -325,7 +326,7 @@ button{font-family:inherit}
   </div>
   <div class="askcard">
     <h4>Get their take</h4>
-    <div class="sub">Pick a recent product or search any Amazon item.</div>
+    <div class="sub">Product ideas from this creator's world.</div>
     <div class="trylabel" id="ask-sub">Try one of these <span class="suggtoggle" onclick="toggleSuggestions()">Show suggestions</span></div>
     <div class="sgrid" id="sugg-grid"></div>
     <div class="msgs" id="msgs"></div>
@@ -657,7 +658,9 @@ async function loadSuggestions(creatorId){
   }
   grid.innerHTML=s.slice(0,3).map((p,i)=>`
     <div class="scard" style="animation-delay:${i*70}ms" onclick="askSuggestion(${esc(JSON.stringify(p.product_name))},${esc(JSON.stringify(p.product_url||''))})">
-      <div class="simg ph">${esc((p.product_name||'?')[0].toUpperCase())}${p.image_url?`<img src="${esc(p.image_url)}" onerror="this.remove()">`:''}</div>
+      ${(p.image_url&&(p.suggestion_type==='exact_product'||p.suggestion_type==='inferred_product'))
+        ?`<div class="simg ph">${esc((p.product_name||'?')[0].toUpperCase())}<img src="${esc(p.image_url)}" onerror="this.remove()"></div>`
+        :`<div class="simg icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>`}
       <div class="sbody">
         <div class="sname">${esc(p.product_name)}</div>
       </div>

@@ -7,6 +7,7 @@ never empty. Generic — driven by the creator fingerprint, no hard-coding.
 """
 import json
 import logging
+import re
 
 from ..creator_fingerprint import get_fingerprint
 from ..db import get_db, new_id, now
@@ -40,6 +41,68 @@ Return a JSON array:
    "reason_detail": "one short line why this fits the creator"}}]"""
 
 
+_MONTHS = r"(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)"
+_INVALID_RX = [
+    re.compile(r"^\s*comments?\s*#?\d*\s*$", re.I),
+    re.compile(r"^\s*(part|episode|ep|day|week|video|post|reel|shorts?|upload|vlog|stream|live|update|q\s*&?\s*a|haul)\s*#?\d*\s*$", re.I),
+    re.compile(rf"^\s*{_MONTHS}\.?\s+\d{{1,2}}(st|nd|rd|th)?\s*$", re.I),
+    re.compile(rf"^\s*\d{{1,2}}(st|nd|rd|th)?\s+(of\s+)?{_MONTHS}\s*$", re.I),
+    re.compile(r"^\s*(today|yesterday|tonight|tomorrow|this week)('s)?\s*$", re.I),
+    re.compile(r"^[\W\d\s]+$"),  # only digits/punctuation
+]
+_GENERIC_SINGLE = {"video", "post", "reel", "short", "upload", "deal", "deals", "stuff",
+                   "things", "items", "finds", "products", "amazon", "link", "links"}
+
+VALID_TYPES = ("exact_product", "inferred_product", "product_category",
+               "category_prompt", "comparison_prompt", "shopping_prompt", "deal_prompt")
+
+
+def is_valid_product_suggestion(title: str, creator_name: str = "") -> bool:
+    """Reject comments, dates, video-part labels, and other non-products."""
+    t = (title or "").strip()
+    if len(t) < 4:
+        return False
+    if creator_name and t.lower() == creator_name.lower():
+        return False
+    for rx in _INVALID_RX:
+        if rx.search(t):
+            return False
+    words = t.split()
+    if len(words) == 1 and words[0].lower() in _GENERIC_SINGLE:
+        return False
+    return True
+
+
+def get_fallback_suggestions_for_creator(fingerprint: dict) -> list:
+    """Deterministic niche prompts — zero LLM calls."""
+    blob = " ".join(str(fingerprint.get(k, "")) for k in
+                    ("one_sentence_identity", "creator_positioning",
+                     "primary_content_pillars", "target_audience")).lower()
+
+    def mk(titles, stype, label):
+        return [{"product_name": t, "suggestion_type": stype, "reason_label": label,
+                 "reason_detail": "From this creator's niche"} for t in titles]
+
+    if re.search(r"deal|coupon|bargain|discount|amazon finds|saving", blob):
+        return mk(["Best Amazon deal today", "Kitchen gadget deal", "Robot vacuum deal",
+                   "Tech deal under $50", "Home gadget deal", "Beauty product deal"],
+                  "deal_prompt", "Deal idea")
+    if re.search(r"wearable|fitness|sleep|health|tracker|smartwatch|ring", blob):
+        return mk(["Smartwatch", "Sleep tracker", "Fitness tracker", "Smart ring",
+                   "Heart-rate monitor"], "shopping_prompt", "Good fit")
+    if re.search(r"cook|kitchen|pizza|recipe|chef|food|bak", blob):
+        return mk(["Pizza oven", "Chef knife", "Stand mixer", "Air fryer",
+                   "Cast iron skillet"], "shopping_prompt", "Good fit")
+    if re.search(r"tech|gadget|pc|laptop|review|smart home|vacuum", blob):
+        return mk(["Laptop", "Wireless headphones", "Smartwatch", "Power bank",
+                   "Robot vacuum"], "shopping_prompt", "Good fit")
+    if re.search(r"beauty|skincare|makeup|hair", blob):
+        return mk(["Skincare set", "Hair dryer", "LED face mask", "Makeup organizer"],
+                  "shopping_prompt", "Good fit")
+    return mk(["Best Amazon deal today", "Wireless earbuds", "Top-rated kitchen gadget",
+               "Portable charger"], "shopping_prompt", "Popular pick")
+
+
 def _metric(metrics_json):
     m = json.loads(metrics_json or "{}")
     return max((int(m.get(k, 0) or 0) for k in ("views", "likes", "like_count")), default=0)
@@ -66,10 +129,17 @@ def generate_suggested_products(creator_id: str, limit: int = 8) -> list:
             if rank < a["best_rank"]:
                 a["best"], a["best_rank"] = it, rank
 
+    with get_db() as db:
+        crow = db.execute("SELECT channel_title FROM creators WHERE creator_id=?", (creator_id,)).fetchone()
+    creator_name = (crow["channel_title"] if crow else "") or ""
+
     suggestions = []
     n_items = max(len(items), 1)
     max_count = max((a["count"] for a in agg.values()), default=1)
     for a in agg.values():
+        if not is_valid_product_suggestion(a["name"], creator_name):
+            log.info("rejected suggestion candidate: %r", a["name"])
+            continue
         it = a["best"]
         recency = 1 - a["best_rank"] / n_items
         relevance = float(it["product_relevance_score"] or 0.5)
@@ -95,9 +165,25 @@ def generate_suggested_products(creator_id: str, limit: int = 8) -> list:
     suggestions.sort(key=lambda s: -s["final_score"])
     suggestions = suggestions[:limit]
 
-    # fingerprint-driven prompts when exact products are thin
+    # deterministic niche fallback first (zero AI cost), LLM only as last resort
     if len(suggestions) < max(3, limit // 2):
         profile = get_fingerprint(creator_id) or {}
+        for f in get_fallback_suggestions_for_creator(profile):
+            if len(suggestions) >= limit:
+                break
+            if any(s["product_name"].lower() == f["product_name"].lower() for s in suggestions):
+                continue
+            suggestions.append({
+                "product_name": f["product_name"], "product_brand": "",
+                "product_category": "", "product_url": "", "image_url": "", "price_text": "",
+                "source_content_id": None, "source_platform": "", "source_title": "",
+                "source_url": "", "reason_label": f["reason_label"],
+                "reason_detail": f["reason_detail"], "suggestion_type": f["suggestion_type"],
+                "confidence": 0.5, "recency_score": 0.5, "relevance_score": 0.6,
+                "final_score": 0.4,
+            })
+
+    if len(suggestions) < max(3, limit // 2):
         with get_db() as db:
             all_titles = [r["title"] for r in db.execute(
                 "SELECT title FROM content_items WHERE creator_id=? AND title != '' "
@@ -117,7 +203,7 @@ def generate_suggested_products(creator_id: str, limit: int = 8) -> list:
                       "suggestion_type": "category_prompt", "reason_label": "Common topic",
                       "reason_detail": "Core theme on this channel"} for p in pillars]
         for e in (extra if isinstance(extra, list) else []):
-            if not e.get("product_name"):
+            if not e.get("product_name") or not is_valid_product_suggestion(e["product_name"], creator_name):
                 continue
             suggestions.append({
                 "product_name": e["product_name"], "product_brand": e.get("product_brand", ""),
@@ -133,10 +219,11 @@ def generate_suggested_products(creator_id: str, limit: int = 8) -> list:
 
     suggestions = suggestions[:limit]
 
-    # real product photos + buy links (Amazon search, cached, parallel)
+    # real product photos + buy links — ONLY for exact products (prompts get an icon, not a fake photo)
     from ..product_images import lookup_many
-    found = lookup_many([s["product_name"] for s in suggestions])
-    for s in suggestions:
+    exact = [s for s in suggestions if s["suggestion_type"] in ("exact_product", "inferred_product")]
+    found = lookup_many([s["product_name"] for s in exact])
+    for s in exact:
         hit = found.get(s["product_name"])
         if hit:
             s["image_url"] = hit["image"] or s["image_url"]
@@ -170,7 +257,25 @@ def get_suggested_products(creator_id: str, limit: int = 8, regenerate: bool = F
                           source_title, source_url, suggestion_type, confidence, final_score
                    FROM suggested_products WHERE creator_id=?
                    ORDER BY final_score DESC LIMIT ?""", (creator_id, limit)).fetchall()]
-        if rows:
-            return rows
+        # filter stale junk at the read path too; regenerate if the stored set is bad/thin
+        valid = [r for r in rows if is_valid_product_suggestion(r["product_name"])
+                 and r["suggestion_type"] in VALID_TYPES]
+        for r in rows:
+            if r not in valid:
+                log.info("filtered stored suggestion: %r", r["product_name"])
+        if len(valid) >= 3 or (rows and len(valid) == len(rows)):
+            for v in valid:
+                v["query_text"] = v["product_name"]
+            return valid
     generate_suggested_products(creator_id, limit)
-    return get_suggested_products(creator_id, limit, regenerate=False)
+    with get_db() as db:
+        rows = [dict(r) for r in db.execute(
+            """SELECT suggested_product_id, product_name, product_brand, product_category,
+                      product_url, image_url, price_text, reason_label, reason_detail,
+                      source_title, source_url, suggestion_type, confidence, final_score
+               FROM suggested_products WHERE creator_id=?
+               ORDER BY final_score DESC LIMIT ?""", (creator_id, limit)).fetchall()]
+    out = [r for r in rows if is_valid_product_suggestion(r["product_name"])]
+    for v in out:
+        v["query_text"] = v["product_name"]
+    return out
