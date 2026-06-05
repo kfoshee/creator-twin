@@ -497,12 +497,24 @@ class ResolveRequest(BaseModel):
 
 @app.get("/api/products/search")
 def products_search(q: str = ""):
-    from creator_twin.product_search import search_products
+    from creator_twin.product_search import (normalize_product_query, search_products,
+                                             search_suggestions_for)
+    expanded = normalize_product_query(q)
     try:
-        return {"results": search_products(q)}
-    except Exception as e:
+        results = [dict(r, type="product") for r in search_products(expanded or q)]
+    except Exception:
         log.exception("product search failed")
-        return {"results": [], "error": str(e)[:200]}
+        results = []
+    used_fallback = False
+    if len(results) < 3 and (q or "").strip():
+        # never a dead end: fill with search suggestions
+        existing = {r["title"].lower() for r in results}
+        for s in search_suggestions_for(q):
+            if s["title"].lower() not in existing:
+                results.append(s)
+        used_fallback = True
+    return {"results": results[:8], "query": q, "expanded_query": expanded,
+            "used_fallback": used_fallback}
 
 
 @app.post("/api/products/resolve")

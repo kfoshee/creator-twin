@@ -32,6 +32,73 @@ def extract_asin(url: str):
     return m.group(1) if m else None
 
 
+# ---- query expansion: "dove sha" -> "dove shampoo" ----
+_EXPANSIONS = {
+    "sha": "shampoo", "sham": "shampoo", "shamp": "shampoo", "shampo": "shampoo",
+    "cond": "conditioner", "condi": "conditioner", "moist": "moisturizer",
+    "sunscr": "sunscreen", "prot": "protein", "lapt": "laptop", "headph": "headphones",
+    "earb": "earbuds", "vac": "vacuum", "airf": "air fryer", "charg": "charger",
+    "char": "charge", "deod": "deodorant", "toothp": "toothpaste",
+}
+_COMMON_WORDS = ["shampoo", "conditioner", "moisturizer", "sunscreen", "protein powder",
+                 "laptop", "headphones", "earbuds", "vacuum", "air fryer", "charger",
+                 "smartwatch", "tracker", "deodorant", "toothpaste", "detergent",
+                 "body wash", "skincare", "makeup", "blender", "microwave"]
+
+SUGGESTION_SEEDS = [
+    "Dove shampoo", "Dove shampoo and conditioner", "Dove Intensive Repair Shampoo",
+    "Dove Daily Moisture Shampoo", "Dove body wash", "shampoo", "conditioner",
+    "sunscreen", "moisturizer", "body wash", "deodorant",
+    "air fryer", "robot vacuum", "kitchen gadget", "cleaning product",
+    "laundry detergent", "paper towels", "coffee maker",
+    "laptop", "MacBook", "headphones", "wireless earbuds", "charger", "power bank",
+    "smartwatch", "phone case", "Fitbit Charge 6", "Fitbit fitness tracker",
+    "protein powder", "fitness tracker", "sleep tracker", "smart scale", "water bottle",
+    "CVS skincare deals", "Walgreens beauty deals", "Amazon beauty deals",
+    "grocery coupon deals", "household cleaning deals",
+]
+
+
+def normalize_product_query(query: str) -> str:
+    q = re.sub(r"\s+", " ", (query or "").strip())
+    if not q:
+        return q
+    tokens = q.split(" ")
+    last = tokens[-1].lower()
+    if last in _EXPANSIONS:
+        tokens[-1] = _EXPANSIONS[last]
+    elif len(last) >= 3:
+        for w in _COMMON_WORDS:
+            if w.startswith(last) and w != last:
+                tokens[-1] = w
+                break
+    return " ".join(tokens)
+
+
+def search_suggestions_for(query: str, limit: int = 5) -> list:
+    """Seed-catalog matches + a final 'search Amazon' row — never a dead end."""
+    expanded = normalize_product_query(query)
+    low_tokens = set(expanded.lower().split())
+    out, seen = [], set()
+    for seed in SUGGESTION_SEEDS:
+        sl = seed.lower()
+        if expanded.lower() in sl or low_tokens <= set(sl.split()) or \
+           any(t in sl for t in low_tokens if len(t) >= 4):
+            if sl not in seen:
+                seen.add(sl)
+                out.append(seed)
+        if len(out) >= limit - 1:
+            break
+    if expanded and expanded.lower() not in seen:
+        out.append(expanded)
+    import urllib.parse
+    return [{"type": "search_suggestion", "title": s, "query_text": s,
+             "source": "amazon_search",
+             "product_url": "https://www.amazon.com/s?k=" + urllib.parse.quote_plus(s),
+             "price_text": None, "image_url": None, "price_verified": False}
+            for s in out[:limit]]
+
+
 def search_products(query: str, limit: int = 6) -> list:
     query = (query or "").strip()[:120]
     if not query:

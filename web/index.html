@@ -230,6 +230,7 @@ button{font-family:inherit}
 .srow .stm{display:flex;gap:8px;align-items:center;font-size:11.5px;color:var(--t3);margin-top:2px}
 .srow .stm b{color:var(--t);font-weight:700}
 .srow .amz{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:var(--bg);border:1px solid var(--br);border-radius:100px;padding:1.5px 8px}
+.sqicon{width:48px;height:48px;border-radius:10px;background:#f3eefe;color:var(--purple);display:grid;place-items:center;flex-shrink:0}
 .srow .use{font-size:12px;font-weight:700;color:var(--purple);opacity:0;transform:translateX(-3px);transition:all .18s;white-space:nowrap}
 .srow:hover .use,.srow.hl .use{opacity:1;transform:none}
 .snote{padding:13px 16px;font-size:12.5px;color:var(--t3)}
@@ -417,8 +418,8 @@ async function loadTwins(){
   $('twins-list').innerHTML=twins.map((t,i)=>{
     const st=t.build_status||'';
     const badge=st==='running'?['building','Building']
-      :(st==='usable'||st==='enriching')?['enriching','Enriching']
-      :t.chunks>0?['ready','Ready']                       // a working twin is Ready even if a later run failed
+      :st==='enriching'?['enriching','Enriching']          // only while enrichment actually runs
+      :(st==='usable'||st==='completed'||st==='done'||t.chunks>0)?['ready','Ready']
       :(st==='error'||st==='failed')?['failed','Failed']:null;
     const meta=t.videos_in_db>0
       ?`${(t.subscriber_count||0).toLocaleString()} subscribers &middot; ${t.videos_in_db.toLocaleString()} items`
@@ -739,6 +740,20 @@ const MOCK_PRODUCTS=[  // realistic demo prices, clearly marked mock_demo
   {title:"Kindle Paperwhite (16 GB)",price_text:"$149.99",product_url:"",image_url:"",rating:4.7,review_count:61000},
   {title:"Anker 737 Power Bank",price_text:"$109.99",product_url:"",image_url:"",rating:4.6,review_count:14000},
 ];
+const QEXP={sha:'shampoo',sham:'shampoo',shamp:'shampoo',cond:'conditioner',condi:'conditioner',
+  moist:'moisturizer',sunscr:'sunscreen',prot:'protein',lapt:'laptop',headph:'headphones',
+  earb:'earbuds',vac:'vacuum',airf:'air fryer',charg:'charger',char:'charge',deod:'deodorant'};
+const QWORDS=['shampoo','conditioner','moisturizer','sunscreen','protein powder','laptop','headphones',
+  'earbuds','vacuum','air fryer','charger','smartwatch','tracker','deodorant','toothpaste','detergent',
+  'body wash','skincare','makeup'];
+function expandQuery(q){
+  q=(q||'').trim().replace(/\s+/g,' ');
+  if(!q)return q;
+  const t=q.split(' ');const last=t[t.length-1].toLowerCase();
+  if(QEXP[last])t[t.length-1]=QEXP[last];
+  else if(last.length>=3){const w=QWORDS.find(w=>w.startsWith(last)&&w!==last);if(w)t[t.length-1]=w}
+  return t.join(' ');
+}
 function isAmazonUrl(s){return /(?:amazon\.[a-z.]+|amzn\.to|a\.co)\//i.test(s||'')}
 function detectInputType(s){s=(s||'').trim();if(!s)return'unknown';if(isAmazonUrl(s)||/^https?:\/\//.test(s))return'amazon_url';return'product_query'}
 let sTimer=null,sResults=[],sIndex=-1,sSeq=0;
@@ -765,24 +780,32 @@ async function runSearch(q){
     try{results=((await api('/api/products/search?q='+encodeURIComponent(q))).json||{}).results||[]}catch(e){}
   }
   if(seq!==sSeq||$('chat-input').value.trim()!==q)return;
-  sResults=results.slice(0,5);sIndex=-1;
-  if(!sResults.length){openDrop('<div class="snote">No products found. Try a more specific name or paste an Amazon link.</div>');return}
-  openDrop(sResults.map((r,i)=>`
+  const expanded=expandQuery(q);
+  // never a dead end: append search-suggestion fallback rows client-side too
+  const titles=new Set(results.map(r=>(r.title||'').toLowerCase()));
+  if(results.length<5&&!titles.has(expanded.toLowerCase()))
+    results.push({type:'search_suggestion',title:expanded,query_text:expanded});
+  sResults=results.slice(0,6);sIndex=-1;
+  if(!sResults.length){openDrop(`<div class="snote">Press Enter to search Amazon for “${esc(expanded)}”.</div>`);return}
+  openDrop(sResults.map((r,i)=>{
+    const isSugg=r.type==='search_suggestion';
+    return `
     <div class="srow" style="animation-delay:${i*40}ms" id="srow-${i}" onmousedown="selectResult(${i})" role="button" aria-label="${esc(r.title)}">
-      ${r.image_url?`<img src="${esc(r.image_url)}" alt="">`:'<div style="width:48px"></div>'}
+      ${isSugg?'<div class="sqicon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>'
+        :(r.image_url?`<img src="${esc(r.image_url)}" alt="">`:'<div style="width:48px"></div>')}
       <div class="st">
-        <div class="stt">${esc(r.title)}</div>
-        <div class="stm">${r.price_text?`<b>${esc(r.price_text)}</b>`:''}${r.rating?`<span>★ ${r.rating}${r.review_count?` (${r.review_count.toLocaleString()})`:''}</span>`:''}<span class="amz">Amazon</span></div>
+        <div class="stt">${isSugg?'Search “'+esc(r.title)+'”':esc(r.title)}</div>
+        <div class="stm">${r.price_text?`<b>${esc(r.price_text)}</b>`:''}${r.rating?`<span>★ ${r.rating}${r.review_count?` (${r.review_count.toLocaleString()})`:''}</span>`:''}<span class="amz">${isSugg?'Search':'Amazon'}</span></div>
       </div>
-      <span class="use">Use &rarr;</span>
-    </div>`).join(''));
+      <span class="use">${isSugg?'Ask':'Use'} &rarr;</span>
+    </div>`}).join(''));
 }
 function openDrop(html){const d=$('sdrop');d.innerHTML=html;d.style.display='block'}
 function closeDrop(){const d=$('sdrop');if(d){d.style.display='none'}sIndex=-1}
 function selectResult(i){
   const r=sResults[i];if(!r)return;
   closeDrop();
-  $('chat-input').value=r.product_url||r.title;
+  $('chat-input').value=(r.type==='search_suggestion')?(r.query_text||r.title):(r.product_url||r.title);
   sendChat();
 }
 function onSearchKey(e){
@@ -793,7 +816,13 @@ function onSearchKey(e){
   else if(e.key==='Enter'){e.preventDefault();if(open&&sIndex>=0)selectResult(sIndex);else submitSearch()}
 }
 function hl(){sResults.forEach((_,i)=>{const el=$('srow-'+i);if(el)el.classList.toggle('hl',i===sIndex)})}
-function submitSearch(){clearTimeout(sTimer);closeDrop();sendChat()}
+function submitSearch(){
+  clearTimeout(sTimer);closeDrop();
+  const v=$('chat-input').value.trim();
+  if(v&&detectInputType(v)==='product_query'&&!looksLikeChat(v))
+    $('chat-input').value=expandQuery(v);
+  sendChat();
+}
 function cleanAnswerText(t){
   // strip leaked pipe-separated suggestion lines + dangling separators (old saved answers)
   let lines=String(t||'').trimEnd().split('\n');
