@@ -96,13 +96,20 @@ def _clean_answer(text: str):
     clean = "\n".join(lines)
     clean = re.sub(r"[ \t]*\|[ \t]*", ", ", clean)        # stray inline pipes
     clean = re.sub(r"[,;]\s*$", ".", clean.strip())       # dangling punctuation
+    clean = clean.strip()
+    # token-cap truncation mid-sentence: drop the incomplete trailing fragment
+    if clean and clean[-1] not in ".!?\"')":
+        cut = max(clean.rfind("."), clean.rfind("!"), clean.rfind("?"))
+        if cut > len(clean) * 0.5:
+            clean = clean[:cut + 1]
     return clean.strip(), salvaged
 
 
 
 
 def _mini_profile(profile: dict) -> str:
-    """Compact taste profile (~300-500 tokens) — never ship the whole fingerprint."""
+    """Compact taste profile (~300-600 tokens) — never ship the whole fingerprint.
+    Includes the starter taste model + answer guidance so final takes follow them."""
     if not profile:
         return "(no profile yet)"
     parts = []
@@ -111,11 +118,13 @@ def _mini_profile(profile: dict) -> str:
         if v:
             parts.append(f"{key.replace('_', ' ')}: {str(v)[:180]}")
     for key in ("primary_content_pillars", "repeated_advice", "recommended_tools",
-                "boundaries_and_disallowed_claims"):
+                "deal_categories", "retailer_context", "deal_logic",
+                "product_take_rules", "price_value_rules", "retailer_rules",
+                "answer_do", "answer_dont", "boundaries_and_disallowed_claims"):
         v = profile.get(key)
         if isinstance(v, list) and v:
             parts.append(f"{key.replace('_', ' ')}: " + "; ".join(str(x)[:60] for x in v[:4]))
-    return "\n".join(parts)[:2000]
+    return "\n".join(parts)[:2600]
 
 def _retailer_cards(price_ctx):
     """Found prices become price cards; the rest are honest 'Open search' links."""

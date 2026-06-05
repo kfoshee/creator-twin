@@ -482,6 +482,25 @@ def creator_progress(creator_id: str):
                FROM content_items WHERE creator_id=?""", (creator_id,)).fetchone())
         stats["chunks"] = db.execute(
             "SELECT COUNT(*) AS n FROM rag_chunks WHERE creator_id=?", (creator_id,)).fetchone()["n"]
+        run = db.execute(
+            "SELECT twin_quality, items_inspected, gemini_calls_used, enrichment_status, step_detail "
+            "FROM build_runs WHERE creator_id=? ORDER BY started_at DESC LIMIT 1",
+            (creator_id,)).fetchone()
+        fp = db.execute(
+            "SELECT source_type FROM creator_fingerprint WHERE creator_id=? "
+            "ORDER BY created_at DESC LIMIT 1", (creator_id,)).fetchone()
+    if run:
+        stats.update({"twin_quality": run["twin_quality"] or "",
+                      "items_inspected": run["items_inspected"] or 0,
+                      "gemini_calls_used": run["gemini_calls_used"] or 0,
+                      "enrichment_status": run["enrichment_status"] or "",
+                      "build_detail": run["step_detail"] or ""})
+    stats["fingerprint_source"] = fp["source_type"] if fp else ""
+    if not stats.get("twin_quality"):
+        # legacy runs built before quality gating: derive tier from the fingerprint
+        stats["twin_quality"] = ("improved" if (run and run["enrichment_status"] == "done")
+                                 else "starter" if stats["fingerprint_source"] == "gemini_starter"
+                                 else "basic" if stats["fingerprint_source"] else "")
     return stats
 
 

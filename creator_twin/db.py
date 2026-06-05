@@ -335,6 +335,9 @@ MIGRATIONS = [
     "ALTER TABLE build_runs ADD COLUMN estimated_background_time_seconds INTEGER",
     "ALTER TABLE build_runs ADD COLUMN ai_calls_used INTEGER DEFAULT 0",
     "ALTER TABLE build_runs ADD COLUMN gemini_calls_used INTEGER DEFAULT 0",
+    # starter twin quality gating
+    "ALTER TABLE build_runs ADD COLUMN twin_quality TEXT DEFAULT ''",
+    "ALTER TABLE build_runs ADD COLUMN items_inspected INTEGER DEFAULT 0",
     # soft delete
     "ALTER TABLE creators ADD COLUMN deleted_at TEXT",
     "ALTER TABLE creators ADD COLUMN deleted_reason TEXT",

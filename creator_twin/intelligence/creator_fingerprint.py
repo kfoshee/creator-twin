@@ -83,68 +83,55 @@ def generate_fingerprint(creator_id: str) -> dict:
 
 
 def generate_gemini_starter_fingerprint(creator_id: str) -> dict:
-    """SMART starter: 2 small Gemini calls (taste model + voice rules), Claude 0.
-    Falls back to the deterministic starter on any failure."""
-    from ..llm_gemini import GeminiError, available, complete_json as gcomplete
-    if not available():
+    """SMART starter: builds the rich taste model + answer guidance (2 cached
+    Gemini calls), Claude 0. Falls back to the deterministic starter on failure."""
+    from .starter_taste_model import build_starter_taste_model
+    taste, guidance, source = build_starter_taste_model(creator_id)
+    if source != "gemini_starter" or not taste:
+        log.warning("gemini starter unavailable — deterministic fallback")
         return generate_starter_fingerprint(creator_id)
-    profiles, items, _, _, _ = _gather(creator_id)
+    guidance = guidance or {}
+
     with get_db() as db:
-        c = db.execute("SELECT channel_title, channel_description FROM creators WHERE creator_id=?",
+        c = db.execute("SELECT channel_title FROM creators WHERE creator_id=?",
                        (creator_id,)).fetchone()
     name = (c["channel_title"] if c else "") or "this creator"
-    bio = ((c["channel_description"] if c else "") or "")[:600]
-    titles = [(it["title"] or it["caption"] or "")[:120] for it in items[:30] if it["title"] or it["caption"]]
-    descs = [(it["description"] or "")[:300] for it in items[:10] if it["description"]]
 
-    try:
-        # Gemini call 1: niche + product world + taste
-        taste = gcomplete(
-            f"Creator: {name}\nBio: {bio}\nRecent titles:\n" + "\n".join(f"- {t}" for t in titles) +
-            "\nDescriptions (excerpts):\n" + "\n".join(d for d in descs[:5]) +
-            '\n\nReturn JSON: {"creator_niche":"...","product_categories":["..."],'
-            '"deal_categories":["..."],"creator_taste_bullets":["..."],"buying_criteria":["..."],'
-            '"likely_audience":"...","confidence":"low|medium|high"}',
-            system="You analyze creators' product taste from public metadata. Be specific to THIS creator.",
-            task="gemini_starter_taste", creator_id=creator_id)
-
-        # Gemini call 2: first-person voice + take rules
-        voice = gcomplete(
-            f"Creator: {name} | niche: {taste.get('creator_niche', '')}\n"
-            f"Title style examples:\n" + "\n".join(f"- {t}" for t in titles[:15]) +
-            '\n\nReturn JSON: {"first_person_voice_rules":["..."],"product_take_rules":["..."],'
-            '"price_value_rules":["..."],"things_to_avoid":["..."]}',
-            system="You define how an AI twin should sound when giving first-person product takes "
-                   "in this creator's voice. Short actionable rules.",
-            task="gemini_starter_voice", creator_id=creator_id)
-    except GeminiError as e:
-        log.warning("gemini starter failed (%s) — deterministic fallback", e)
-        return generate_starter_fingerprint(creator_id)
-
+    conf = taste.get("confidence", 0.6)
+    conf_label = ("high" if isinstance(conf, (int, float)) and conf >= 0.75
+                  else "low" if isinstance(conf, (int, float)) and conf < 0.4
+                  else conf if isinstance(conf, str) else "medium")
     profile = {
         "one_sentence_identity": f"{name}: {taste.get('creator_niche', '')}",
         "creator_positioning": taste.get("creator_niche", ""),
-        "primary_content_pillars": (taste.get("product_categories") or [])[:6],
-        "deal_categories": (taste.get("deal_categories") or [])[:6],
-        "target_audience": taste.get("likely_audience", ""),
-        "tone_style": "; ".join((voice.get("first_person_voice_rules") or [])[:3]),
-        "repeated_advice": (taste.get("creator_taste_bullets") or [])[:6],
-        "recommendation_logic": "; ".join((taste.get("buying_criteria") or [])[:4]),
-        "product_take_rules": (voice.get("product_take_rules") or [])[:5],
-        "price_value_rules": (voice.get("price_value_rules") or [])[:4],
-        "boundaries_and_disallowed_claims": (voice.get("things_to_avoid") or [])[:4],
+        "primary_content_pillars": (taste.get("product_world") or [])[:6],
+        "deal_categories": (taste.get("specific_product_categories") or [])[:8],
+        "retailer_context": (taste.get("retailer_context") or [])[:6],
+        "deal_logic": (taste.get("deal_logic") or [])[:5],
+        "target_audience": taste.get("audience", ""),
+        "tone_style": "; ".join((taste.get("style_notes") or [])[:3]),
+        "repeated_advice": (taste.get("likely_recommendation_patterns") or [])[:6],
+        "recommendation_logic": "; ".join((taste.get("creator_buying_criteria") or [])[:4]),
+        "product_take_rules": ((guidance.get("creator_specific_take_rules") or []) +
+                               (guidance.get("voice_rules") or []))[:6],
+        "price_value_rules": (guidance.get("price_rules") or [])[:4],
+        "retailer_rules": (guidance.get("retailer_rules") or [])[:4],
+        "answer_do": (guidance.get("answer_do") or [])[:5],
+        "answer_dont": (guidance.get("answer_dont") or [])[:5],
+        "boundaries_and_disallowed_claims": (taste.get("what_to_avoid") or [])[:4],
         "recommended_tools": [],
         "facts_needing_creator_review": ["starter profile built by Gemini from metadata"],
-        "source_confidence": taste.get("confidence", "medium"),
+        "source_confidence": conf_label,
+        "taste_model": taste,
+        "answer_guidance": guidance,
     }
     with get_db() as db:
         db.execute(
             "INSERT INTO creator_fingerprint (creator_id, source_type, confidence, profile_json, approved_by_creator, created_at, updated_at)"
             " VALUES (?,?,?,?,0,?,?)",
-            (creator_id, "gemini_starter", taste.get("confidence", "medium"),
-             json.dumps(profile), now(), now()))
+            (creator_id, "gemini_starter", conf_label, json.dumps(profile), now(), now()))
     (PROFILE_DIR / f"{creator_id}_fingerprint.json").write_text(json.dumps(profile, indent=2))
-    log.info("gemini starter fingerprint for %s (2 calls)", creator_id)
+    log.info("gemini starter fingerprint for %s (taste model + answer guidance)", creator_id)
     return profile
 
 

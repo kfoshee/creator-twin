@@ -67,6 +67,12 @@ def start_background_enrichment(creator_id: str, use_claude: bool = False):
             import creator_twin.background_worker as bw
             bw.USE_CLAUDE_STYLE = use_claude
             enrich(creator_id)
+            # badge tier: manual enrichment finished → Improved twin
+            with get_db() as db:
+                db.execute(
+                    "UPDATE build_runs SET twin_quality='improved', enrichment_status='done' "
+                    "WHERE run_id=(SELECT run_id FROM build_runs WHERE creator_id=? "
+                    "ORDER BY started_at DESC LIMIT 1)", (creator_id,))
         finally:
             _ACTIVE.discard(creator_id)
 

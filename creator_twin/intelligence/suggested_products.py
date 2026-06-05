@@ -50,6 +50,13 @@ _INVALID_RX = [
     re.compile(r"^\s*(today|yesterday|tonight|tomorrow|this week)('s)?\s*$", re.I),
     re.compile(r"^\s*(posted|uploaded|new video|live|premiere)\s*#?\d*\s*$", re.I),
     re.compile(r"^[\W\d\s]+$"),  # only digits/punctuation
+    # truncated title fragments: "Apple Products That DON", "Things You Won"
+    re.compile(r"\b(that|which|who|don|doesn|won|isn|aren|couldn|shouldn)'?\s*$", re.I),
+    # video-format fragments: "PUBLIX HAUL 5", "Target Run", "CVS Shop With Me"
+    re.compile(r"\b(hauls?|vlogs?|restock|unboxing|shop with me|runs?)\s*#?\d*\s*$", re.I),
+    # bare retailer (+number) fragments: "Publix 5", "TARGET 4", "CVS"
+    re.compile(r"^(publix|cvs|walgreens|target|walmart|costco|aldi|kroger|ulta|sephora|"
+               r"amazon|dollar tree|dollar general|sam's club)\s*#?\d*\s*$", re.I),
 ]
 _GENERIC_SINGLE = {"video", "post", "reel", "short", "upload", "deal", "deals", "stuff",
                    "things", "items", "finds", "find", "products", "product", "amazon",
@@ -129,9 +136,9 @@ def get_fallback_suggestions_for_creator(fingerprint: dict) -> list:
                  "reason_detail": "From this creator's niche"} for t in titles]
 
     if re.search(r"deal|coupon|bargain|discount|amazon finds|saving", blob):
-        return mk(["Best Amazon deal today", "Kitchen gadget deal", "Robot vacuum deal",
-                   "Tech deal under $50", "Home gadget deal", "Beauty product deal"],
-                  "deal_prompt", "Deal idea")
+        return mk(["CVS skincare deals", "Dove shampoo deals", "Walgreens makeup clearance",
+                   "Dollar Tree finds this week", "Tide detergent stock-up",
+                   "Sol de Janeiro dupes"], "deal_prompt", "Deal idea")
     if re.search(r"wearable|fitness|sleep|health|tracker|smartwatch|ring", blob):
         return mk(["Smartwatch", "Sleep tracker", "Fitness tracker", "Smart ring",
                    "Heart-rate monitor"], "shopping_prompt", "Good fit")
@@ -231,16 +238,32 @@ def generate_suggested_products(creator_id: str, limit: int = 8, force_gemini: b
             "recency_score": 0.6, "relevance_score": 0.6, "final_score": 0.5,
         })
 
-    # optional single Gemini cleanup call (off by default; NEVER Claude)
-    from .suggestion_refiner import enabled as gemini_enabled, refine_suggestions_with_gemini
+    # Gemini suggestion pass (NEVER Claude): high-quality grounded generation first,
+    # legacy cleanup as fallback. Cached by content hash either way.
+    from .suggestion_refiner import (enabled as gemini_enabled, generate_high_quality_suggestions,
+                                     refine_suggestions_with_gemini)
     if gemini_enabled() or force_gemini:
-        refined, suggestion_source = refine_suggestions_with_gemini(
-            {"id": creator_id, "name": creator_name,
-             "niche": str(profile.get("creator_positioning", ""))[:80]},
-            suggestions + [{"product_name": t, "source_title": t} for t in recent_titles[:10]],
-            max_suggestions=limit, force=force_gemini)
+        taste_model = profile.get("taste_model") or {
+            "creator_niche": str(profile.get("creator_positioning", ""))[:80],
+            "product_world": profile.get("primary_content_pillars") or [],
+            "specific_product_categories": profile.get("deal_categories") or [],
+            "retailer_context": profile.get("retailer_context") or [],
+            "deal_logic": profile.get("deal_logic") or []}
+        raw_cands = (suggestions + [{"product_name": t, "source_title": t}
+                                    for t in recent_titles[:10]])
+        refined, suggestion_source = generate_high_quality_suggestions(
+            creator_id, taste_model, raw_cands, titles=recent_titles, max_suggestions=limit)
+        if not refined:
+            refined, suggestion_source = refine_suggestions_with_gemini(
+                {"id": creator_id, "name": creator_name,
+                 "niche": str(profile.get("creator_positioning", ""))[:80]},
+                raw_cands, max_suggestions=limit, force=force_gemini)
         if refined:
-            exact_keep = [s for s in suggestions if s["suggestion_type"] in ("exact_product", "inferred_product")][:2]
+            # HQ set saw the raw candidates and is grounded — trust it fully.
+            # Only the legacy cleanup path keeps top raw exact products.
+            exact_keep = ([] if suggestion_source in ("gemini_hq", "gemini_hq_cached") else
+                          [s for s in suggestions
+                           if s["suggestion_type"] in ("exact_product", "inferred_product")][:2])
             suggestions = exact_keep + [{
                 "product_name": r["product_name"], "product_brand": "", "product_category": "",
                 "product_url": "", "image_url": "", "price_text": "", "source_content_id": None,

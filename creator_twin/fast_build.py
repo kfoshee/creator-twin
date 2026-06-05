@@ -37,22 +37,27 @@ log = logging.getLogger("creator_twin.build")
 
 STEPS = [
     ("sources", "Finding creator"),
-    ("catalogscan", "Reading recent videos"),
-    ("products", "Finding product signals"),
+    ("catalogscan", "Reading recent content"),
+    ("products", "Extracting product signals"),
     ("select", "Picking high-signal items"),
-    ("fingerprint", "Building starter taste"),
+    ("fingerprint", "Learning creator taste"),
     ("catalog", "Learning product takes"),
-    ("suggestions", "Creating suggestions"),
-    ("index", "Indexing answers"),
+    ("suggestions", "Building suggestion set"),
+    ("index", "Preparing answer style"),
     ("ready", "Ready"),
 ]
+
+# a starter twin is only "ready" once it is actually grounded
+QUALITY_REQUIREMENTS = dict(min_items_inspected=40, min_product_candidates=8,
+                            min_specific_suggestions=5)
+BUILD_TIME_CAP_SECONDS = 90
 
 MODES = ("smart", "fast", "preview", "product", "full")
 
 # Claude calls are ZERO in every default mode. smart (default) uses up to 3 small
 # Gemini calls for a real starter taste model; fast = instant zero-AI demo.
 MODE_CFG = {
-    "smart":   dict(fetch=50,   deep_pass=3,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6, gemini=True),
+    "smart":   dict(fetch=50,   deep_pass=8,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6, gemini=True),
     "fast":    dict(fetch=25,   deep_pass=0,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6, gemini=False),
     "preview": dict(fetch=25,   deep_pass=0,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6, gemini=False),
     "product": dict(fetch=100,  deep_pass=0,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6, gemini=True),
@@ -280,12 +285,12 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="smart",
                selected_for_fast_build=n_selected)
 
         # ===== PHASE 1: first usable version (zero Claude by default) =====
-        report("fingerprint", "Building starter taste model...", 0.40)
+        report("fingerprint", "Learning creator taste...", 0.40)
         if mode == "full":
             generate_fingerprint(creator_id)  # deep, LLM-backed (task=deep_fingerprint)
         elif mcfg.get("gemini"):
             from creator_twin.intelligence.creator_fingerprint import generate_gemini_starter_fingerprint
-            generate_gemini_starter_fingerprint(creator_id)  # 2 small Gemini calls, Claude 0
+            generate_gemini_starter_fingerprint(creator_id)  # taste model + answer guidance, Claude 0
         else:
             from creator_twin.intelligence.creator_fingerprint import generate_starter_fingerprint
             generate_starter_fingerprint(creator_id)  # deterministic, 0 AI calls
@@ -300,18 +305,90 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="smart",
                                        progress_label="Starter taste",
                                        task="deep_summary" if mode == "full" else "content_summary")
 
-        report("suggestions", "Creating suggestions...", 0.74)
+        report("suggestions", "Building suggestion set...", 0.70)
         n_sugg = 0
+        from creator_twin.intelligence.suggested_products import generate_suggested_products
         try:
-            from creator_twin.intelligence.suggested_products import generate_suggested_products
             n_sugg = len(generate_suggested_products(creator_id, limit=mcfg["suggestions"],
                                                      force_gemini=mcfg.get("gemini", False)))
         except Exception as e:
             add_run_error(run_id, f"suggestions: {e}")
-        report("suggestions", f"{n_sugg} starter suggestions", 0.80, suggested_products_count=n_sugg,
+        report("suggestions", f"{n_sugg} starter suggestions", 0.74, suggested_products_count=n_sugg,
                ai_calls_used=budget.used)
 
-        report("index", "Indexing first answers...", 0.84)
+        # ===== QUALITY GATE: a starter twin must be grounded, not instant =====
+        def _quality_counts():
+            from creator_twin.intelligence.suggested_products import is_valid_product_suggestion
+            from creator_twin.intelligence.suggestion_refiner import is_generic_filler
+            with get_db() as db:
+                qi = db.execute("SELECT COUNT(*) AS n FROM content_items WHERE creator_id=?",
+                                (creator_id,)).fetchone()["n"]
+                qc = db.execute(
+                    "SELECT COUNT(*) AS n FROM content_items WHERE creator_id=? AND is_product_related=1",
+                    (creator_id,)).fetchone()["n"]
+                names = [r["product_name"] for r in db.execute(
+                    "SELECT product_name FROM suggested_products WHERE creator_id=?",
+                    (creator_id,)).fetchall()]
+                fp = db.execute(
+                    "SELECT source_type FROM creator_fingerprint WHERE creator_id=? "
+                    "ORDER BY created_at DESC LIMIT 1", (creator_id,)).fetchone()
+            qs = sum(1 for n in names if is_valid_product_suggestion(n) and not is_generic_filler(n))
+            return qi, qc, qs, (fp["source_type"] if fp else "")
+
+        Q = QUALITY_REQUIREMENTS
+        n_items_q, n_cand_q, n_specific_q, fp_source = _quality_counts()
+        # fewer items than we asked for = we already have the creator's whole catalog
+        catalog_exhausted = content_found < (fetch_limit or 10**6)
+        needs_more = (mode in ("smart", "product") and (
+            (n_items_q < Q["min_items_inspected"] and not catalog_exhausted)
+            or n_cand_q < Q["min_product_candidates"]
+            or n_specific_q < Q["min_specific_suggestions"]))
+        if needs_more and not catalog_exhausted and time.time() - t0 < BUILD_TIME_CAP_SECONDS - 20:
+            bigger = min((fetch_limit or 50) * 3, 150)
+            report("catalogscan", f"Reading more content (up to {bigger} items) for a stronger twin...", 0.76)
+            for platform, cfg in sources.items():
+                cfg = dict(cfg, max_items=bigger, deep_pass=deep_pass,
+                           skip_transcripts=skip_transcripts, skip_comments=skip_comments,
+                           force_refresh=False)
+                try:
+                    get_connector(platform)(creator_id, cfg, run_id,
+                                            progress=lambda d: report("catalogscan", d)).run()
+                except BuildCancelled:
+                    raise
+                except Exception as e:
+                    add_run_error(run_id, f"expand/{platform}: {e}")
+            report("products", "Extracting product signals from the new items...", 0.78)
+            pstats = classify_creator_content(creator_id)
+            report("suggestions", "Rebuilding suggestion set...", 0.80)
+            try:
+                n_sugg = len(generate_suggested_products(creator_id, limit=mcfg["suggestions"],
+                                                         force_gemini=mcfg.get("gemini", False)))
+            except Exception as e:
+                add_run_error(run_id, f"suggestions: {e}")
+            with get_db() as db:
+                content_found = db.execute(
+                    "SELECT COUNT(*) AS n FROM content_items WHERE creator_id=?",
+                    (creator_id,)).fetchone()["n"]
+            n_items_q, n_cand_q, n_specific_q, fp_source = _quality_counts()
+            catalog_exhausted = content_found < bigger
+
+        reqs_met = ((n_items_q >= Q["min_items_inspected"] or catalog_exhausted)
+                    and n_cand_q >= Q["min_product_candidates"]
+                    and n_specific_q >= Q["min_specific_suggestions"]
+                    and bool(fp_source))
+        gemini_built = fp_source == "gemini_starter"
+        if mode == "full":
+            twin_quality = "starter"
+        elif not gemini_built:
+            twin_quality = "basic"
+        elif reqs_met:
+            twin_quality = "starter"
+        else:
+            twin_quality = "needs_data"
+        log.info("quality gate: items=%d cand=%d specific_sugg=%d fp=%s -> %s",
+                 n_items_q, n_cand_q, n_specific_q, fp_source, twin_quality)
+
+        report("index", "Preparing answer style...", 0.84)
         n_chunks = build_chunks(creator_id, progress=lambda d: report("index", d, 0.92))
         index_pending(creator_id)
 
@@ -327,10 +404,21 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="smart",
                 "SELECT COUNT(*) AS n FROM llm_usage_logs WHERE provider='gemini' AND creator_id=? "
                 "AND created_at >= ?", (creator_id, time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(t0)))).fetchone()["n"]
         update_run(run_id, gemini_calls_used=g_used)
+        model_note = ("Gemini starter model" if gemini_built
+                      else "Gemini starter model unavailable. Using basic rules.")
+        if twin_quality == "needs_data":
+            done_detail = (f"Needs more source data. Built from {content_found} items "
+                           f"({n_cand_q} product signals). Add more sources or click 'Improve this twin'.")
+        elif twin_quality == "basic":
+            done_detail = (f"Basic starter built from {content_found} recent items. {model_note} "
+                           f"Claude build calls: 0.")
+        else:
+            done_detail = (f"Built from {content_found} recent items. {model_note}. "
+                           f"Claude build calls: 0." if gemini_built else
+                           f"Built from {content_found} recent items. Claude build calls: 0.")
         update_run(run_id, status="usable", is_usable=1, first_usable_at=now(), progress=1.0,
-                   step="ready",
-                   step_detail=("Starter twin ready. Click 'Improve this twin' for deeper analysis."
-                                if not background_enrich else "Ready. Still learning in the background."),
+                   step="ready", step_detail=done_detail,
+                   twin_quality=twin_quality, items_inspected=content_found,
                    chunks_created=n_chunks, indexed_count=n_chunks, summarized_count=n_synth,
                    remaining_count=remaining, content_processed=n_synth, videos_processed=n_synth,
                    synthetic_items_generated=n_synth, ai_calls_used=budget.used,
@@ -354,6 +442,9 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="smart",
         return {
             "enrichment_thread": enrichment_thread,
             "run_id": run_id, "creator_id": creator_id, "mode": mode,
+            "twin_quality": twin_quality,
+            "quality_counts": {"items_inspected": n_items_q, "product_candidates": n_cand_q,
+                               "specific_suggestions": n_specific_q, "fingerprint_source": fp_source},
             "platforms_processed": completed, "platforms_failed": failed,
             "total_found": content_found,
             "product_candidates_found": pstats["product_candidates"],
@@ -425,6 +516,7 @@ def _background_enrichment(creator_id: str, run_id: str, lock_id: str = None):
             n_chunks = db.execute("SELECT COUNT(*) AS n FROM rag_chunks WHERE creator_id=?",
                                   (creator_id,)).fetchone()["n"]
         update_run(run_id, status="completed", enrichment_status="done", finished_at=now(),
+                   twin_quality="improved",
                    chunks_created=n_chunks, indexed_count=n_chunks,
                    remaining_count=pending_count(creator_id))
         log.info("Enrichment complete for %s", creator_id)

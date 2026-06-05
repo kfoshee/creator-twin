@@ -176,6 +176,7 @@ button{font-family:inherit}
 .simg.icon{background:#f3eefe;color:var(--purple)}
 .sbody{min-width:0;display:flex;flex-direction:column;gap:3px}
 .scard .sname{font-size:12.5px;font-weight:700;letter-spacing:-.01em;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.scard .spill{align-self:flex-start;font-size:10px;font-weight:600;color:var(--purple);background:#f3eefe;border-radius:100px;padding:2px 8px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .scard .scta{display:none}
 .skel{height:70px;border-radius:14px;background:linear-gradient(90deg,var(--card) 25%,#ececf1 50%,var(--card) 75%);background-size:200% 100%;animation:shine 1.3s infinite;border:1px solid var(--br)}
 @keyframes shine{to{background-position:-200% 0}}
@@ -586,6 +587,7 @@ async function poll(runId){
       [d.summarized_count||d.synthetic_items_generated,'summaries'],
       [d.suggested_products_count,'suggestions']
     ].filter(x=>x[0]>0).map((x,i)=>`<span style="animation-delay:${.4+i*.12}s">${x[0].toLocaleString()} ${x[1]}</span>`).join('');
+    if(d.step_detail)$('done-sub').textContent=d.step_detail;
     document.querySelector('.bcard').classList.add('complete');
     setTimeout(()=>openTwin(d.creator_id),1500);
   }else if(d.status==='cancelled'){
@@ -656,14 +658,25 @@ async function watchEnrichment(creatorId){
     if(currentCreator!==creatorId)return clearInterval(enrichTimer);
     let p=null;try{p=(await api('/api/creators/'+creatorId+'/progress')).json}catch(e){return}
     const b=$('learn-badge');
-    if(p&&p.remaining>0){
+    const q=p&&p.twin_quality;
+    const label=q==='improved'?'Improved twin'
+      :q==='starter'?'Starter twin'
+      :q==='basic'?'Basic starter'
+      :q==='needs_data'?'Needs more data':'';
+    if(p&&(label||p.remaining>0)){
       b.classList.add('on');
       if(improving){
-        $('learn-text').textContent='Improving \u00b7 '+p.remaining.toLocaleString()+' items left';
+        $('learn-text').textContent='Improving \u00b7 '+(p.remaining||0).toLocaleString()+' items left';
+      }else if(q==='improved'||!(p.remaining>0)){
+        $('learn-text').textContent=label||'Starter twin';
       }else{
-        $('learn-text').innerHTML='Starter twin <button class="improve" onclick="improveTwin()">Improve this twin</button>';
+        $('learn-text').innerHTML=esc(label||'Starter twin')+' <button class="improve" onclick="improveTwin()">Improve this twin</button>';
       }
-      b.title='Checked '+p.total_found+' \u00b7 '+(p.product_candidates||0)+' product signals \u00b7 '+(p.summarized||0)+' analyzed';
+      b.title='Built from '+(p.items_inspected||p.total_found||0)+' recent items \u00b7 '
+        +(p.product_candidates||0)+' product signals \u00b7 '
+        +(q==='basic'?'Gemini starter model unavailable. Using basic rules.':'Gemini starter model')
+        +' \u00b7 Claude build calls: 0';
+      if(q==='improved'&&!(p.remaining>0))clearInterval(enrichTimer);
     }else{b.classList.remove('on');clearInterval(enrichTimer)}
   };
   check();enrichTimer=setInterval(check,20000);
@@ -718,6 +731,7 @@ async function loadSuggestions(creatorId){
         :`<div class="simg icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>`}
       <div class="sbody">
         <div class="sname">${esc(p.product_name)}</div>
+        ${p.reason_label?`<span class="spill">${esc(PILL_MAP[p.reason_label]||p.reason_label)}</span>`:''}
       </div>
     </div>`).join('');
 }
