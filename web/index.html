@@ -69,6 +69,9 @@ button{font-family:inherit}
 .twincard .arrow{color:var(--t3);font-size:15px;opacity:0;transform:translateX(-4px);transition:all .18s}
 .twincard:hover .arrow{opacity:1;transform:none}
 .emptyline{font-size:13.5px;color:var(--t3);text-align:center;padding:18px}
+.twincard.ghost{opacity:.9;border-style:dashed;cursor:default}
+.twincard.ghost .rebuild{padding:9px 18px;font-size:13px}
+.twincard.ghost .tdel{opacity:.6}
 
 /* build */
 .buildwrap{max-width:560px;margin:0 auto;padding-top:8px}
@@ -408,15 +411,43 @@ function showScreen(name){document.querySelectorAll('.screen').forEach(s=>s.clas
     }
   }
 })();
+function _registry(){try{return JSON.parse(localStorage.getItem('ct_creators')||'{}')}catch(e){return{}}}
+function _saveRegistry(r){try{localStorage.setItem('ct_creators',JSON.stringify(r))}catch(e){}}
+let lastSource='';
+function rememberSource(src){lastSource=src||''}
+function rememberCreator(c){
+  if(!c||!c.creator_id)return;
+  const r=_registry();
+  const prev=r[c.creator_id]||{};
+  r[c.creator_id]={name:c.channel_title||prev.name||'',avatar:c.thumbnail_url||prev.avatar||'',
+    source:prev.source||lastSource||c.channel_url||'',subs:c.subscriber_count||prev.subs||0};
+  _saveRegistry(r);
+}
+function rebuildCreator(source,id){
+  if(!source){showToast('No saved link for this creator.');return}
+  const r=_registry();delete r[id];_saveRegistry(r);
+  $('channel-input').value=source;startBuild();
+}
 async function loadTwins(){
-  const twins=(await api('/api/creators')).json;
+  let twins=[];try{twins=(await api('/api/creators')).json||[]}catch(e){}
   $('twins-section').style.display='block';
-  if(!twins.length){
+  const reg=_registry();
+  const live=new Set(twins.map(t=>t.creator_id));
+  const liveNames=new Set(twins.map(t=>(t.channel_title||'').toLowerCase()));
+  const ghosts=Object.entries(reg).filter(([id,g])=>!live.has(id)&&g.name&&!liveNames.has(g.name.toLowerCase()));
+  if(!twins.length&&!ghosts.length){
     $('twins-list').innerHTML='<div class="emptyline">Add a creator to start.</div>';
     document.querySelector('.twins h2').style.display='none';
     return;
   }
   document.querySelector('.twins h2').style.display='';
+  const ghostHtml=ghosts.map(([id,g])=>`
+    <div class="twincard ghost">
+      <img src="${esc(g.avatar||'')}" onerror="this.style.visibility='hidden'">
+      <div class="ti"><b>${esc(g.name)}</b><span>Saved on this device. The free server cleared its memory.</span></div>
+      <button class="btn rebuild" onclick="rebuildCreator(${esc(JSON.stringify(g.source||''))},${esc(JSON.stringify(id))})">Rebuild</button>
+      <button class="tdel" title="Forget" onclick="event.stopPropagation();const r=_registry();delete r[${esc(JSON.stringify(id))}];_saveRegistry(r);loadTwins()">&#10005;</button>
+    </div>`).join('');
   $('twins-list').innerHTML=twins.map((t,i)=>{
     const st=t.build_status||'';
     const badge=st==='running'?['building','Building']
@@ -433,7 +464,7 @@ async function loadTwins(){
       ${badge?`<span class="tbadge ${badge[0]}">${badge[0]==='building'||badge[0]==='enriching'?'<i></i>':''}${badge[1]}</span>`:''}
       <button class="tdel" title="Remove creator" onclick="event.stopPropagation();confirmRemove('${t.creator_id}',${esc(JSON.stringify(t.channel_title))},'${st}')">&#10005;</button>
       <div class="arrow">&rarr;</div>
-    </div>`}).join('');
+    </div>`}).join('')+ghostHtml;
 }
 /* remove creator */
 let pendingRemove=null;
@@ -517,6 +548,7 @@ async function startBuild(){
     const data=res.json;
     if(!res.ok)throw new Error(data.detail||'Build failed to start');
     stepKeys=data.steps.map(s=>s.key);
+    rememberSource(body.source);
     currentRun=data.run_id;buildStart=Date.now();
     $('b-stop').textContent='Stop build';$('b-stop').disabled=false;
     $('b-steps').innerHTML=data.steps.map(s=>`<div class="step" id="step-${s.key}"><div class="dot"></div>${s.label}</div>`).join('');
@@ -577,6 +609,7 @@ async function openTwin(creatorId){
   const c=d.creator,p=d.profile||{};
   $('d-avatar').src=c.thumbnail_url||'';
   currentAvatar=c.thumbnail_url||'';
+  rememberCreator(c);
   $('d-name').textContent=c.channel_title;
   $('d-sub').textContent=`${(c.subscriber_count||0).toLocaleString()} subscribers ${c.custom_url?'· '+c.custom_url:''}`;
   $('d-sources').innerHTML=(d.sources||[])
