@@ -33,7 +33,7 @@ def generate_platform_summaries(creator_id: str, progress=None) -> int:
             summary = complete_json(PLATFORM_SUMMARY_PROMPT.format(
                 platform=platform,
                 profile=json.dumps(dict(prof)) if prof else "(none)",
-                content=content[:10000]), max_tokens=3000)
+                content=content[:10000]), max_tokens=3000, task="platform_summary")
         except LLMError as e:
             log.warning("platform summary %s failed: %s", platform, e)
             continue

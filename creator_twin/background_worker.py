@@ -42,7 +42,7 @@ def enrich(creator_id: str, max_batches: int = None) -> int:
         log.info("Enriching %s: %d items remaining", creator_id, remaining)
         try:
             done = generate_catalog(creator_id, scope="pending", batch_limit=BATCH,
-                                    progress_label="Background enrichment")
+                                    progress_label="Background enrichment", task="deep_summary")
         except Exception as e:
             log.warning("enrichment batch failed: %s — backing off 60s", e)
             time.sleep(60)

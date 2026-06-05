@@ -190,6 +190,9 @@ def generate_suggested_products(creator_id: str, limit: int = 8) -> list:
                 "ORDER BY published_at DESC LIMIT 30", (creator_id,)).fetchall()]
         titles = "\n".join(f"- {t}" for t in all_titles)
         try:
+            from ..llm_router import allowed
+            if not allowed("suggested_products"):
+                raise LLMError("router: suggestions are deterministic-only")
             extra = complete_json(PROMPT_FALLBACK.format(
                 fingerprint=json.dumps({k: profile.get(k) for k in
                                         ("one_sentence_identity", "creator_positioning",

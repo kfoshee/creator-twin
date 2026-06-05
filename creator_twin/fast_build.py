@@ -50,10 +50,10 @@ STEPS = [
 MODES = ("fast", "preview", "product", "full")
 
 # Per-mode budgets. fast = default: usable in 30-60s, ~10 LLM calls, no comments.
-MODE_CFG = {
-    "fast":    dict(fetch=25,   deep_pass=5,  summaries=10, llm_calls=10,  comments=False, enrich=False, suggestions=6),
-    "preview": dict(fetch=25,   deep_pass=5,  summaries=10, llm_calls=10,  comments=False, enrich=False, suggestions=6),
-    "product": dict(fetch=100,  deep_pass=10, summaries=24, llm_calls=30,  comments=False, enrich=False, suggestions=6),
+MODE_CFG = {  # default builds make ZERO Claude calls; deep AI is behind "Improve this twin"
+    "fast":    dict(fetch=25,   deep_pass=0,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6),
+    "preview": dict(fetch=25,   deep_pass=0,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6),
+    "product": dict(fetch=100,  deep_pass=0,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6),
     "full":    dict(fetch=None, deep_pass=30, summaries=24, llm_calls=None, comments=True,  enrich=True,  suggestions=8),
 }
 
@@ -272,16 +272,23 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="fast",
         report("select", f"{mode_label}: {n_selected} items selected ({content_found} total found)", 0.33,
                selected_for_fast_build=n_selected)
 
-        # ===== PHASE 1: first usable version =====
-        report("fingerprint", "Building first taste model...", 0.40)
-        generate_fingerprint(creator_id)
+        # ===== PHASE 1: first usable version (zero Claude by default) =====
+        report("fingerprint", "Building starter taste model...", 0.40)
+        if mode == "full":
+            generate_fingerprint(creator_id)  # deep, LLM-backed (task=deep_fingerprint)
+        else:
+            from creator_twin.intelligence.creator_fingerprint import generate_starter_fingerprint
+            generate_starter_fingerprint(creator_id)  # deterministic, 0 LLM calls
         report("fingerprint", "Taste model ready", 0.52)
 
-        report("catalog", f"Learning from the top {min(mcfg['summaries'], n_selected)} product items...", 0.55)
-        n_synth = generate_catalog(creator_id, force_refresh=force_refresh, scope="fast",
-                                   batch_limit=mcfg["summaries"],
-                                   progress=lambda d: report("catalog", d, 0.66),
-                                   progress_label="Starter taste")
+        n_synth = 0
+        if mcfg["summaries"]:
+            report("catalog", f"Learning from the top {min(mcfg['summaries'], n_selected)} product items...", 0.55)
+            n_synth = generate_catalog(creator_id, force_refresh=force_refresh, scope="fast",
+                                       batch_limit=mcfg["summaries"],
+                                       progress=lambda d: report("catalog", d, 0.66),
+                                       progress_label="Starter taste",
+                                       task="deep_summary" if mode == "full" else "content_summary")
 
         report("suggestions", "Creating suggestions...", 0.74)
         n_sugg = 0
@@ -369,6 +376,8 @@ def _background_enrichment(creator_id: str, run_id: str, lock_id: str = None):
     """Phase 2: everything beyond the first usable version. Never blocks the user."""
     from creator_twin.background_worker import enrich, pending_count
     from creator_twin.build_locks import release
+    from creator_twin.intelligence.ai_budget import AIBudget, clear as _bc, install as _bi
+    _bi(AIBudget(max_llm_calls=40))  # enrichment ceiling: ~40 Claude calls max
     update_run(run_id, status="enriching", enrichment_status="running")
 
     def stage(label, fn):
@@ -383,7 +392,7 @@ def _background_enrichment(creator_id: str, run_id: str, lock_id: str = None):
             add_run_error(run_id, f"enrich/{label}: {e}")
 
     try:
-        stage("Enriching full catalog", lambda: enrich(creator_id))
+        stage("Enriching top of catalog", lambda: enrich(creator_id, max_batches=4))  # ~100 items max
         stage("Reading each platform", lambda: generate_platform_summaries(creator_id))
         stage("Modeling style", lambda: generate_style_model(creator_id))
         stage("Modeling audience", lambda: generate_audience_model(creator_id))
@@ -405,6 +414,7 @@ def _background_enrichment(creator_id: str, run_id: str, lock_id: str = None):
         update_run(run_id, status="usable", enrichment_status="stopped", finished_at=now())
         log.info("Enrichment stopped by user for %s (twin stays usable)", creator_id)
     finally:
+        _bc()
         if lock_id:
             release(lock_id)
 

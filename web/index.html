@@ -295,7 +295,7 @@ button{font-family:inherit}
   <div class="buildwrap"><div class="bcard">
     <div class="spinner" id="b-spin"></div>
     <div class="buildtitle" id="b-title">Building quick twin</div>
-    <div class="builddetail" id="b-detail">Using a small high-signal sample first.</div>
+    <div class="builddetail" id="b-detail">Starter twin from metadata — no paid AI used.</div>
     <div class="pwrap"><div class="pbar"><i id="b-bar"></i></div><div class="ppct" id="b-pct">0%</div></div>
     <div class="eta" id="b-eta"></div>
     <div class="steps" id="b-steps"></div>
@@ -309,7 +309,7 @@ button{font-family:inherit}
     <div class="donewrap" id="b-done">
       <svg class="check" viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/><path d="M14 27l8 8 16-16"/></svg>
       <div class="donetitle">Creator Twin ready</div>
-      <div class="donesub">We'll keep learning in the background.</div>
+      <div class="donesub" id="done-sub">Starter twin built from metadata.</div>
       <div class="donechips" id="b-chips"></div>
     </div>
   </div></div>
@@ -633,6 +633,7 @@ async function watchEnrichment(creatorId){
 }
 async function improveTwin(){
   if(!currentCreator||improving)return;
+  if(!confirm('Deep enrichment analyzes more videos and may use additional AI credits. Continue?'))return;
   improving=true;
   $('learn-text').textContent='Improving\u2026';
   try{await api('/api/creators/'+currentCreator+'/enrich/start',{method:'POST'})}

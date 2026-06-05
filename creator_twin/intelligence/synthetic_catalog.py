@@ -39,7 +39,7 @@ def generate_qa_pairs(creator_id: str, n=20) -> int:
             fingerprint=json.dumps({k: v for k, v in profile.items() if k != '_meta'})[:4000],
             catalog=catalog[:6000],
             comments="\n".join(f"[{c['like_count']}] {c['text'][:200]}" for c in comments)[:3000] or "(none)",
-            n=n), system=QA_SYSTEM, max_tokens=6000)
+            n=n), system=QA_SYSTEM, max_tokens=6000, task="qa_generation")
     except LLMError as e:
         log.warning("QA generation failed: %s", e)
         return 0
@@ -59,7 +59,7 @@ def generate_qa_pairs(creator_id: str, n=20) -> int:
 
 def generate_catalog(creator_id: str, force_refresh=False, progress=None,
                      scope: str = "fast", batch_limit: int = None,
-                     progress_label: str = "Catalog") -> int:
+                     progress_label: str = "Catalog", task: str = "content_summary") -> int:
     """Summarize content items.
 
     scope: 'fast' = selected_for_fast_build only; 'pending' = unprocessed
@@ -99,7 +99,7 @@ def generate_catalog(creator_id: str, force_refresh=False, progress=None,
                 block += f"\nREAL_TEXT:\n{it['text_body'][:5000]}\n"
         try:
             notes = complete_json(CONTENT_SUMMARY_PROMPT.format(
-                fingerprint_summary=fp, items_block=block), system=CATALOG_SYSTEM, max_tokens=8000)
+                fingerprint_summary=fp, items_block=block), system=CATALOG_SYSTEM, max_tokens=8000, task=task)
         except LLMError as e:
             log.warning("catalog batch failed (%d items): %s", len(batch), e)
             with get_db() as db:

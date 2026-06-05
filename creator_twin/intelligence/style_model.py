@@ -27,7 +27,7 @@ def generate_style_model(creator_id: str) -> dict:
     try:
         model = complete_json(STYLE_MODEL_PROMPT.format(
             fingerprint=json.dumps({k: v for k, v in profile.items() if k != '_meta'})[:5000],
-            samples=samples[:18000]), max_tokens=4000)
+            samples=samples[:18000]), max_tokens=4000, task="creator_style_synthesis")
     except LLMError as e:
         log.warning("style model failed: %s", e)
         return {}

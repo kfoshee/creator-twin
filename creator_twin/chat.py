@@ -99,10 +99,28 @@ def _clean_answer(text: str):
     return clean.strip(), salvaged
 
 
+
+
+def _mini_profile(profile: dict) -> str:
+    """Compact taste profile (~300-500 tokens) — never ship the whole fingerprint."""
+    if not profile:
+        return "(no profile yet)"
+    parts = []
+    for key in ("one_sentence_identity", "creator_positioning", "tone_style", "recommendation_logic"):
+        v = profile.get(key)
+        if v:
+            parts.append(f"{key.replace('_', ' ')}: {str(v)[:180]}")
+    for key in ("primary_content_pillars", "repeated_advice", "recommended_tools",
+                "boundaries_and_disallowed_claims"):
+        v = profile.get(key)
+        if isinstance(v, list) and v:
+            parts.append(f"{key.replace('_', ' ')}: " + "; ".join(str(x)[:60] for x in v[:4]))
+    return "\n".join(parts)[:2000]
+
 # ---- main entry ----
 
 def ask(creator_id: str, question: str, persona_mode: str = DEFAULT_PERSONA_MODE,
-        history: list = None, k: int = 12, session_id: str = None) -> dict:
+        history: list = None, k: int = 6, session_id: str = None) -> dict:
     if persona_mode not in PERSONA_MODES:
         persona_mode = DEFAULT_PERSONA_MODE
     with get_db() as db:
@@ -145,10 +163,12 @@ def ask(creator_id: str, question: str, persona_mode: str = DEFAULT_PERSONA_MODE
     if not products and current.get("title"):
         search_query += " " + current["title"] + " " + ctx.get("current_product_category", "")
     chunks = search(creator_id, search_query, k=k)
+    for c in chunks:
+        c["text"] = c["text"][:400]
     context = context_block(chunks)
 
     profile = get_fingerprint(creator_id) or {}
-    fp = json.dumps({k_: v for k_, v in profile.items() if k_ != "_meta"}, indent=1)[:5000]
+    fp = _mini_profile(profile)  # compact: a few hundred tokens, not the whole fingerprint
     system = SYSTEMS[persona_mode].format(creator_name=creator_name, fingerprint=fp)
 
     product_block = ""
@@ -199,7 +219,29 @@ FOLLOWUPS: <short follow-up question 1> | <short follow-up question 2> | <short 
 These are questions the fan would naturally ask you next (max 7 words each). They appear as UI
 buttons, never as part of your prose."""
 
-    raw = complete(prompt, system=system, max_tokens=800, temperature=0.7)
+    # answer cache: identical product/question repeats never re-bill Claude
+    import hashlib
+    cache_key = hashlib.sha1("|".join([
+        creator_id, question.strip().lower()[:300], persona_mode,
+        (current.get("title") or "")[:80], "v2"]).encode()).hexdigest()
+    cached = None
+    if not convo_history:  # only cache fresh takes, not mid-conversation turns
+        with get_db() as db:
+            row = db.execute("SELECT payload FROM chat_cache WHERE cache_key=?", (cache_key,)).fetchone()
+        if row:
+            cached = json.loads(row["payload"])
+            log.info("chat cache hit for %s", creator_id)
+    if cached:
+        raw = cached["raw"]
+    else:
+        task = "final_product_take" if (products or current.get("title")) else "followup_chat"
+        raw = complete(prompt, system=system, max_tokens=600, temperature=0.7,
+                       task=task, creator_id=creator_id)
+        if not convo_history:
+            from .db_writer import write as _w
+            _w(lambda c: c.execute(
+                "INSERT OR REPLACE INTO chat_cache (cache_key, payload, created_at) VALUES (?,?,?)",
+                (cache_key, json.dumps({"raw": raw}), now())))
     answer, follow_ups = raw, []
     if "FOLLOWUPS:" in raw:
         answer, _, tail = raw.rpartition("FOLLOWUPS:")

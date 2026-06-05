@@ -342,6 +342,25 @@ MIGRATIONS = [
 ]
 
 SCHEMA += """
+CREATE TABLE IF NOT EXISTS llm_usage_logs (
+    id TEXT PRIMARY KEY,
+    provider TEXT,
+    model TEXT,
+    task TEXT,
+    creator_id TEXT,
+    session_id TEXT,
+    input_tokens INTEGER DEFAULT 0,
+    output_tokens INTEGER DEFAULT 0,
+    estimated_cost REAL DEFAULT 0,
+    created_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS chat_cache (
+    cache_key TEXT PRIMARY KEY,
+    payload TEXT,
+    created_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS resolved_products (
     product_id TEXT PRIMARY KEY,
     source TEXT,

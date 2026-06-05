@@ -59,7 +59,7 @@ def generate_review_packet(creator_id: str) -> str:
         fingerprint=json.dumps({k: v for k, v in profile.items() if k != "_meta"}, indent=1)[:12000],
         platforms="\n".join(f"{p['platform']}: {p['summary_json'][:800]}" for p in platforms) or "(youtube only)",
         stats=f"{stats['items']} items across {stats['platforms']} platforms, {stats['with_text'] or 0} with real text",
-        name=name, creator_id=creator_id), max_tokens=6000, temperature=0.4)
+        name=name, creator_id=creator_id), max_tokens=6000, temperature=0.4, task="review_packet")
     out = PROFILE_DIR / f"{creator_id}_creator_review_packet.md"
     out.write_text(md)
     return str(out)

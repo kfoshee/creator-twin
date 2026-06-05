@@ -260,6 +260,29 @@ def build_status(run_id: str):
     return d
 
 
+@app.get("/api/debug/llm-usage")
+def llm_usage():
+    with get_db() as db:
+        by_task = [dict(r) for r in db.execute(
+            """SELECT task, COUNT(*) AS calls, SUM(input_tokens) AS in_tok,
+                      SUM(output_tokens) AS out_tok, ROUND(SUM(estimated_cost), 4) AS cost
+               FROM llm_usage_logs GROUP BY task ORDER BY cost DESC""").fetchall()]
+        totals = dict(db.execute(
+            """SELECT COUNT(*) AS total_calls, SUM(input_tokens) AS total_in,
+                      SUM(output_tokens) AS total_out, ROUND(SUM(estimated_cost), 4) AS total_cost
+               FROM llm_usage_logs""").fetchone())
+        build_tasks = ("content_summary", "starter_fingerprint", "platform_summary",
+                       "qa_generation", "suggested_products", "review_packet", "deep_fingerprint")
+        build_calls = db.execute(
+            "SELECT COUNT(*) AS n FROM llm_usage_logs WHERE task IN (%s)"
+            % ",".join("?" * len(build_tasks)), build_tasks).fetchone()["n"]
+        chat_calls = db.execute(
+            "SELECT COUNT(*) AS n FROM llm_usage_logs WHERE task IN ('final_product_take','followup_chat')").fetchone()["n"]
+    return {"provider": "anthropic", "totals": totals, "by_task": by_task,
+            "anthropic_calls_during_build": build_calls,
+            "anthropic_calls_during_chat": chat_calls}
+
+
 @app.get("/api/debug/db")
 def debug_db():
     from creator_twin.config import DB_PATH

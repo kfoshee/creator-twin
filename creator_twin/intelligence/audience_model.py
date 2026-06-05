@@ -22,7 +22,7 @@ def generate_audience_model(creator_id: str) -> dict:
         model = complete_json(AUDIENCE_MODEL_PROMPT.format(
             fingerprint=json.dumps({k: v for k, v in profile.items() if k != '_meta'})[:5000],
             comments="\n".join(f"[{c['like_count']}] {c['text'][:200]}" for c in comments)[:12000]
-                     or "(no comments — infer from fingerprint)"), max_tokens=4000)
+                     or "(no comments — infer from fingerprint)"), max_tokens=4000, task="creator_style_synthesis")
     except LLMError as e:
         log.warning("audience model failed: %s", e)
         return {}

@@ -67,7 +67,7 @@ def generate_fingerprint(creator_id: str) -> dict:
         comments="\n".join(f"[{c['like_count']} likes] {c['text'][:250]}" for c in comments)[:8000] or "(none)",
         intake=intake_block[:10000])
 
-    profile = complete_json(prompt, system=FINGERPRINT_SYSTEM, max_tokens=8000)
+    profile = complete_json(prompt, system=FINGERPRINT_SYSTEM, max_tokens=8000, task="deep_fingerprint")
 
     has_confirmed = bool(intake or uploads)
     has_real_text = any(it["text_body"] for it in items)
@@ -79,6 +79,57 @@ def generate_fingerprint(creator_id: str) -> dict:
             "INSERT INTO creator_fingerprint (creator_id, source_type, confidence, profile_json, approved_by_creator, created_at, updated_at)"
             " VALUES (?,?,?,?,0,?,?)", (creator_id, source, confidence, json.dumps(profile), now(), now()))
     (PROFILE_DIR / f"{creator_id}_fingerprint.json").write_text(json.dumps(profile, indent=2))
+    return profile
+
+
+def generate_starter_fingerprint(creator_id: str) -> dict:
+    """ZERO-LLM starter fingerprint from metadata: names, titles, keywords,
+    extracted products. Good enough to ground takes; deep version is manual."""
+    import re
+    from collections import Counter
+    profiles, items, _, _, _ = _gather(creator_id)
+    with get_db() as db:
+        c = db.execute("SELECT channel_title, channel_description FROM creators WHERE creator_id=?",
+                       (creator_id,)).fetchone()
+        prods = [p for r in db.execute(
+            "SELECT products_mentioned_json FROM content_items WHERE creator_id=? LIMIT 100",
+            (creator_id,)).fetchall() for p in json.loads(r[0] or "[]")]
+    name = (c["channel_title"] if c else "") or "this creator"
+    desc = ((c["channel_description"] if c else "") or "")[:600]
+    titles = [it["title"] or it["caption"] or "" for it in items[:40]]
+
+    words = Counter(w for t in titles for w in re.findall(r"[a-z]{4,}", t.lower())
+                    if w not in ("with", "this", "that", "your", "from", "best", "video", "2024", "2025", "2026"))
+    keywords = [w for w, _ in words.most_common(10)]
+    blob = (desc + " " + " ".join(keywords)).lower()
+    niche = ("deals & coupons" if re.search(r"deal|coupon|bargain|discount", blob)
+             else "wearables & health tech" if re.search(r"fitness|sleep|tracker|smartwatch|health", blob)
+             else "cooking & kitchen" if re.search(r"cook|kitchen|pizza|recipe|food", blob)
+             else "consumer tech" if re.search(r"tech|gadget|pc|laptop|review|vacuum", blob)
+             else "beauty" if re.search(r"beauty|skincare|makeup", blob)
+             else ", ".join(keywords[:3]) or "general products")
+
+    profile = {
+        "one_sentence_identity": f"{name} covers {niche}" + (f" — {desc[:120]}" if desc else ""),
+        "creator_positioning": f"{niche} creator",
+        "primary_content_pillars": keywords[:5] or [niche],
+        "target_audience": f"people shopping for {niche}",
+        "tone_style": "direct, practical, value-focused",
+        "recommended_tools": list(dict.fromkeys(prods))[:8],
+        "products_services_offers": [],
+        "repeated_advice": ["compare price vs real performance", "avoid paying for branding alone"],
+        "boundaries_and_disallowed_claims": ["never claim firsthand testing without source data"],
+        "recommendation_logic": "value for money first; verify claims before trusting listings",
+        "facts_needing_creator_review": ["entire starter profile is metadata-inferred"],
+        "source_confidence": "low",
+    }
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO creator_fingerprint (creator_id, source_type, confidence, profile_json, approved_by_creator, created_at, updated_at)"
+            " VALUES (?,?,?,?,0,?,?)",
+            (creator_id, "deterministic_starter", "low", json.dumps(profile), now(), now()))
+    (PROFILE_DIR / f"{creator_id}_fingerprint.json").write_text(json.dumps(profile, indent=2))
+    log.info("deterministic starter fingerprint for %s (niche: %s, 0 LLM calls)", creator_id, niche)
     return profile
 
 
