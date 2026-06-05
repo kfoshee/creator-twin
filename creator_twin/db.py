@@ -333,6 +333,7 @@ MIGRATIONS = [
     "ALTER TABLE build_runs ADD COLUMN suggested_products_count INTEGER DEFAULT 0",
     "ALTER TABLE build_runs ADD COLUMN estimated_time_to_usable_seconds INTEGER",
     "ALTER TABLE build_runs ADD COLUMN estimated_background_time_seconds INTEGER",
+    "ALTER TABLE build_runs ADD COLUMN ai_calls_used INTEGER DEFAULT 0",
     # soft delete
     "ALTER TABLE creators ADD COLUMN deleted_at TEXT",
     "ALTER TABLE creators ADD COLUMN deleted_reason TEXT",

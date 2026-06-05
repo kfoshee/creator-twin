@@ -110,6 +110,8 @@ button{font-family:inherit}
 .learnbadge{display:none;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:var(--purple);background:#f3eefe;border-radius:100px;padding:5px 13px;margin-left:auto;cursor:default}
 .learnbadge.on{display:flex}
 .learnbadge i{width:7px;height:7px;border-radius:50%;background:var(--purple);animation:blink 1.4s infinite}
+.learnbadge .improve{background:var(--grad);border:none;color:#fff;font-size:10.5px;font-weight:700;border-radius:100px;padding:3px 11px;margin-left:7px;cursor:pointer;transition:transform .15s}
+.learnbadge .improve:hover{transform:scale(1.03)}
 .counters{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 .counter{background:var(--bg);border:1px solid var(--br);border-radius:12px;padding:12px 6px;text-align:center}
 .counter b{font-size:19px;font-weight:800;display:block;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
@@ -291,18 +293,16 @@ button{font-family:inherit}
   <div class="nav" onclick="showScreen('hero');loadTwins()"><div class="brand">Creator Twin</div></div>
   <div class="buildwrap"><div class="bcard">
     <div class="spinner" id="b-spin"></div>
-    <div class="buildtitle" id="b-title">Learning their product taste</div>
-    <div class="builddetail" id="b-detail">Contacting platforms</div>
+    <div class="buildtitle" id="b-title">Building quick twin</div>
+    <div class="builddetail" id="b-detail">Using a small high-signal sample first.</div>
     <div class="pwrap"><div class="pbar"><i id="b-bar"></i></div><div class="ppct" id="b-pct">0%</div></div>
     <div class="eta" id="b-eta"></div>
     <div class="steps" id="b-steps"></div>
-    <div class="counters" style="grid-template-columns:repeat(3,1fr)">
-      <div class="counter"><b id="c-total">0</b><span>total found</span></div>
-      <div class="counter"><b id="c-products">0</b><span>product candidates</span></div>
-      <div class="counter"><b id="c-sum">0</b><span>summarized</span></div>
-      <div class="counter"><b id="c-chunks">0</b><span>indexed chunks</span></div>
-      <div class="counter"><b id="c-transcripts">0</b><span>real transcripts</span></div>
-      <div class="counter"><b id="c-comments">0</b><span>comments</span></div>
+    <div class="counters">
+      <div class="counter"><b id="c-total">0</b><span>items checked</span></div>
+      <div class="counter"><b id="c-products">0</b><span>product signals</span></div>
+      <div class="counter"><b id="c-sum">0</b><span>suggestions</span></div>
+      <div class="counter"><b id="c-ai">0</b><span>AI steps</span></div>
     </div>
     <button class="stopbtn" id="b-stop" onclick="stopBuild()">Stop build</button>
     <div class="donewrap" id="b-done">
@@ -459,7 +459,7 @@ function showToast(msg){
 loadTwins();
 
 /* build flow */
-let stepKeys=[],buildMode='product',buildStart=0,currentRun=null;
+let stepKeys=[],buildMode='fast',buildStart=0,currentRun=null;
 async function stopBuild(){
   if(!currentRun)return;
   $('b-stop').textContent='Stopping…';$('b-stop').disabled=true;
@@ -536,10 +536,8 @@ async function poll(runId){
     $(id).style.fontSize=v>0?'':'12px'};
   cnt('c-total',d.total_found||d.videos_found||0);
   cnt('c-products',d.product_candidates_found||0);
-  cnt('c-sum',d.summarized_count||d.synthetic_items_generated||0);
-  cnt('c-transcripts',d.transcripts_fetched||0);
-  cnt('c-comments',d.comments_fetched||0);
-  cnt('c-chunks',d.chunks_created||0);
+  cnt('c-sum',d.suggested_products_count||0);
+  cnt('c-ai',d.ai_calls_used||0);
   const idx=stepKeys.indexOf(d.step);
   const usable=d.is_usable||d.status==='usable'||d.status==='done'||d.status==='completed'||d.status==='enriching';
   stepKeys.forEach((k,i)=>{const el=$('step-'+k);if(!el)return;
@@ -613,19 +611,31 @@ function restoreConvo(creatorId){
 }
 /* ===== background enrichment badge ===== */
 let enrichTimer=null;
+let improving=false;
 async function watchEnrichment(creatorId){
-  clearInterval(enrichTimer);
+  clearInterval(enrichTimer);improving=false;
   const check=async()=>{
     if(currentCreator!==creatorId)return clearInterval(enrichTimer);
     let p=null;try{p=(await api('/api/creators/'+creatorId+'/progress')).json}catch(e){return}
     const b=$('learn-badge');
     if(p&&p.remaining>0){
       b.classList.add('on');
-      $('learn-text').textContent='Still learning · '+p.remaining.toLocaleString()+' items left';
-      b.title=`Scanned ${p.total_found} · ${p.product_candidates||0} product candidates · ${p.summarized||0} summarized · ${p.chunks} indexed`;
+      if(improving){
+        $('learn-text').textContent='Improving \u00b7 '+p.remaining.toLocaleString()+' items left';
+      }else{
+        $('learn-text').innerHTML='Starter twin <button class="improve" onclick="improveTwin()">Improve this twin</button>';
+      }
+      b.title='Checked '+p.total_found+' \u00b7 '+(p.product_candidates||0)+' product signals \u00b7 '+(p.summarized||0)+' analyzed';
     }else{b.classList.remove('on');clearInterval(enrichTimer)}
   };
   check();enrichTimer=setInterval(check,20000);
+}
+async function improveTwin(){
+  if(!currentCreator||improving)return;
+  improving=true;
+  $('learn-text').textContent='Improving\u2026';
+  try{await api('/api/creators/'+currentCreator+'/enrich/start',{method:'POST'})}
+  catch(e){improving=false;showToast("Couldn't start enrichment.")}
 }
 const PILL_MAP={'Recently reviewed':'Recently mentioned','Mentioned recently':'Recently mentioned',
   'Frequently compared':'Compared','Strong fit':'Good fit','Common topic':'Good fit'};

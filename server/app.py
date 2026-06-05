@@ -45,14 +45,13 @@ RUN_LOGS: dict = {}
 
 
 # Standard build — identical for everyone.
-STANDARD_MAX_ITEMS = 120
-STANDARD_DEEP_PASS = 30
+
 
 
 class BuildRequest(BaseModel):
     source: str = ""          # universal: any creator link/handle, platform auto-detected
     platform: str = "auto"    # auto | all | youtube | instagram | tiktok | x | website | podcast
-    mode: str = "product"     # one standard mode: full catalog scan, all product videos
+    mode: str = "fast"        # fast (default, cheap) | product | full
     channel_url: str = ""
     instagram_handle: str = ""
     tiktok_handle: str = ""
@@ -211,11 +210,11 @@ def start_build(req: BuildRequest):
         RUN_LOGS[run_id].append({"time": now(), "step": step, "detail": detail})
         RUN_LOGS[run_id] = RUN_LOGS[run_id][-200:]
 
-    mode = req.mode if req.mode in ("preview", "product", "full") else "preview"
+    mode = req.mode if req.mode in ("fast", "preview", "product", "full") else "fast"
 
     def worker():
         try:
-            summary = fast_build(sources, mode=mode, deep_pass=STANDARD_DEEP_PASS,
+            summary = fast_build(sources, mode=mode,
                                  run_id=run_id, on_progress=on_progress)
             RUN_LOGS[run_id].append({"time": now(), "step": "done",
                                      "detail": f"Build complete in {summary['elapsed_seconds']}s"})

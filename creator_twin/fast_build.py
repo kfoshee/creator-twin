@@ -36,20 +36,26 @@ from creator_twin.review.review_packet import generate_review_packet
 log = logging.getLogger("creator_twin.build")
 
 STEPS = [
-    ("sources", "Finding creator sources"),
-    ("catalogscan", "Scanning catalog"),
-    ("products", "Finding product content"),
-    ("select", "Picking high-signal content"),
-    ("fingerprint", "Building first taste model"),
-    ("catalog", "Learning their product takes"),
-    ("suggestions", "Creating starter suggestions"),
-    ("index", "Indexing first answers"),
+    ("sources", "Finding creator"),
+    ("catalogscan", "Reading recent videos"),
+    ("products", "Finding product signals"),
+    ("select", "Picking high-signal items"),
+    ("fingerprint", "Building starter taste"),
+    ("catalog", "Learning product takes"),
+    ("suggestions", "Creating suggestions"),
+    ("index", "Indexing answers"),
     ("ready", "Ready"),
 ]
 
-FIRST_BATCH = 24  # items summarized before the twin is declared usable
+MODES = ("fast", "preview", "product", "full")
 
-MODES = ("preview", "product", "full")
+# Per-mode budgets. fast = default: usable in 30-60s, ~10 LLM calls, no comments.
+MODE_CFG = {
+    "fast":    dict(fetch=25,   deep_pass=5,  summaries=10, llm_calls=10,  comments=False, enrich=False, suggestions=6),
+    "preview": dict(fetch=25,   deep_pass=5,  summaries=10, llm_calls=10,  comments=False, enrich=False, suggestions=6),
+    "product": dict(fetch=100,  deep_pass=10, summaries=24, llm_calls=30,  comments=False, enrich=False, suggestions=6),
+    "full":    dict(fetch=None, deep_pass=30, summaries=24, llm_calls=None, comments=True,  enrich=True,  suggestions=8),
+}
 
 
 class BuildCancelled(Exception):
@@ -112,10 +118,10 @@ def select_deep_pass(creator_id, per_platform=DEEP_PASS_PER_PLATFORM):
     return total
 
 
-def fast_build(sources: dict, creator_id=None, intake_file=None, mode="preview",
-               max_items=None, max_product_items=None, deep_pass=DEEP_PASS_PER_PLATFORM,
-               include_non_product=False, background_enrich=True,
-               skip_transcripts=False, skip_comments=False, force_refresh=False,
+def fast_build(sources: dict, creator_id=None, intake_file=None, mode="fast",
+               max_items=None, max_product_items=None, deep_pass=None,
+               include_non_product=False, background_enrich=None,
+               skip_transcripts=False, skip_comments=None, force_refresh=False,
                run_id=None, on_progress=None):
     """sources: {platform: config_dict}. Returns summary dict.
 
@@ -127,8 +133,20 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="preview",
     run_id = run_id or new_id("run")
     creator_id = _ensure_creator(creator_id, sources, intake_file)
     if mode not in MODES:
-        mode = "preview"
-    fetch_limit = max_items if max_items else (120 if mode == "preview" else None)
+        mode = "fast"
+    mcfg = MODE_CFG[mode]
+    fetch_limit = max_items if max_items else mcfg["fetch"]
+    deep_pass = deep_pass if deep_pass is not None else mcfg["deep_pass"]
+    skip_comments = mcfg["comments"] is False if skip_comments is None else skip_comments
+    background_enrich = mcfg["enrich"] if background_enrich is None else background_enrich
+
+    # hard cap on AI spend for this build thread
+    from creator_twin.intelligence.ai_budget import AIBudget, clear as budget_clear, install as budget_install
+    budget = AIBudget(max_llm_calls=mcfg["llm_calls"],
+                      max_items_to_summarize=mcfg["summaries"],
+                      max_transcripts=min(deep_pass, 5),
+                      comments_enabled=not skip_comments)
+    budget_install(budget)
 
     from creator_twin.build_locks import acquire, downgrade, heartbeat as lock_heartbeat, release
     lock_id, existing = acquire(creator_id, run_id)
@@ -249,7 +267,8 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="preview",
             n_selected = db.execute(
                 "SELECT COUNT(*) AS n FROM content_items WHERE creator_id=? AND selected_for_fast_build=1",
                 (creator_id,)).fetchone()["n"]
-        mode_label = {"preview": "Fast preview", "product": "Product catalog", "full": "Full catalog"}[mode]
+        mode_label = {"fast": "Quick twin", "preview": "Quick twin",
+                      "product": "Product catalog", "full": "Full catalog"}[mode]
         report("select", f"{mode_label}: {n_selected} items selected ({content_found} total found)", 0.33,
                selected_for_fast_build=n_selected)
 
@@ -258,20 +277,21 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="preview",
         generate_fingerprint(creator_id)
         report("fingerprint", "Taste model ready", 0.52)
 
-        report("catalog", f"Learning from the top {min(FIRST_BATCH, n_selected)} product items...", 0.55)
+        report("catalog", f"Learning from the top {min(mcfg['summaries'], n_selected)} product items...", 0.55)
         n_synth = generate_catalog(creator_id, force_refresh=force_refresh, scope="fast",
-                                   batch_limit=FIRST_BATCH,
+                                   batch_limit=mcfg["summaries"],
                                    progress=lambda d: report("catalog", d, 0.66),
-                                   progress_label="First taste model")
+                                   progress_label="Starter taste")
 
-        report("suggestions", "Creating starter suggestions...", 0.74)
+        report("suggestions", "Creating suggestions...", 0.74)
         n_sugg = 0
         try:
             from creator_twin.intelligence.suggested_products import generate_suggested_products
-            n_sugg = len(generate_suggested_products(creator_id))
+            n_sugg = len(generate_suggested_products(creator_id, limit=mcfg["suggestions"]))
         except Exception as e:
             add_run_error(run_id, f"suggestions: {e}")
-        report("suggestions", f"{n_sugg} starter suggestions", 0.80, suggested_products_count=n_sugg)
+        report("suggestions", f"{n_sugg} starter suggestions", 0.80, suggested_products_count=n_sugg,
+               ai_calls_used=budget.used)
 
         report("index", "Indexing first answers...", 0.84)
         n_chunks = build_chunks(creator_id, progress=lambda d: report("index", d, 0.92))
@@ -282,12 +302,15 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="preview",
                 "SELECT COUNT(*) AS n FROM content_items WHERE creator_id=? AND processing_status='pending'",
                 (creator_id,)).fetchone()["n"]
 
-        # USABLE — route the user in; everything else is enrichment
+        # USABLE — route the user in; deeper enrichment is MANUAL ("Improve this twin")
+        budget_clear()
         update_run(run_id, status="usable", is_usable=1, first_usable_at=now(), progress=1.0,
-                   step="ready", step_detail="Ready. Still learning in the background.",
+                   step="ready",
+                   step_detail=("Starter twin ready. Click 'Improve this twin' for deeper analysis."
+                                if not background_enrich else "Ready. Still learning in the background."),
                    chunks_created=n_chunks, indexed_count=n_chunks, summarized_count=n_synth,
                    remaining_count=remaining, content_processed=n_synth, videos_processed=n_synth,
-                   synthetic_items_generated=n_synth,
+                   synthetic_items_generated=n_synth, ai_calls_used=budget.used,
                    estimated_background_time_seconds=max(remaining * 3, 30) if remaining else 0)
         if on_progress:
             on_progress("ready", "First version ready", {})
@@ -323,11 +346,13 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="preview",
             "elapsed_seconds": round(time.time() - t0),
         }
     except BuildCancelled:
+        budget_clear()
         release(lock_id)
         update_run(run_id, status="cancelled", step_detail="Stopped by user", finished_at=now())
         log.info("Build %s cancelled", run_id)
         raise
     except Exception as e:
+        budget_clear()
         release(lock_id)
         add_run_error(run_id, str(e))
         update_run(run_id, status="error", step_detail=str(e)[:300], finished_at=now())

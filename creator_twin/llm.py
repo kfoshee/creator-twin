@@ -23,6 +23,8 @@ def complete(prompt: str, system: str = "", max_tokens: int = 4000, temperature:
     """Single-turn completion against Claude, with retry on transient errors."""
     if not ANTHROPIC_API_KEY:
         raise LLMError("ANTHROPIC_API_KEY is not set. Add it to .env")
+    from .intelligence.ai_budget import consume
+    consume()  # fast builds cap LLM spend; raises BudgetExhausted when out
     last_err = None
     for attempt in range(3):
         try:
