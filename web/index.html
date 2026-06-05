@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Creator Twin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f5f8; --card:#ffffff; --br:#e7e8ec; --br2:#d8dade;
+  --t:#16181d; --t2:#6b7280; --t3:#9ca3af;
+  --purple:#8b5cf6; --pink:#ec4899; --green:#16a34a; --greenbg:#e9f9ef; --amber:#b45309; --amberbg:#fdf6e8; --red:#dc2626;
+  --grad:linear-gradient(110deg,#8b5cf6,#a855f7 45%,#ec4899);
+  --shadow:0 1px 3px rgba(16,24,40,.07),0 1px 2px rgba(16,24,40,.05);
+  --shadow2:0 4px 16px rgba(16,24,40,.08);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--t);font-family:"Inter",system-ui,-apple-system,sans-serif;min-height:100vh;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;
+  background-image:linear-gradient(rgba(22,24,29,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(22,24,29,.018) 1px,transparent 1px);background-size:36px 36px}
+button{font-family:inherit}
+.screen{max-width:1000px;margin:0 auto;padding:24px;display:none;animation:rise .35s cubic-bezier(.21,.9,.35,1)}
+.screen.active{display:block}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* nav */
+.nav{display:flex;align-items:center;justify-content:center;gap:10px;background:var(--card);border:1px solid var(--br);border-radius:100px;padding:13px 22px;box-shadow:var(--shadow);margin-bottom:64px;max-width:420px;margin-left:auto;margin-right:auto;cursor:pointer}
+.nav:hover{box-shadow:var(--shadow2)}
+.logo{width:26px;height:26px;border-radius:8px;background:var(--grad);color:#fff;display:grid;place-items:center;font-weight:900;font-size:11px}
+.brand{font-weight:800;font-size:16px;letter-spacing:-.02em;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* hero */
+.hero{max-width:620px;margin:0 auto;text-align:center}
+.hero h1{font-size:clamp(2.4rem,6vw,3.4rem);font-weight:900;line-height:1.1;letter-spacing:-.04em;margin-bottom:18px}
+.hero h1 .gr{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p{color:var(--t2);font-size:16px;margin:0 auto 32px;max-width:440px}
+.inputrow{display:flex;gap:10px;max-width:560px;margin:0 auto;background:var(--card);border:1px solid var(--br);border-radius:16px;padding:10px;box-shadow:var(--shadow2)}
+.inputrow input{flex:1;background:transparent;border:none;padding:8px 10px;color:var(--t);font-size:15px;outline:none}
+.inputrow input::placeholder{color:var(--t3)}
+.btn{background:var(--grad);color:#fff;border:none;border-radius:11px;padding:12px 24px;font-size:14.5px;font-weight:700;cursor:pointer;white-space:nowrap;transition:opacity .15s,transform .18s cubic-bezier(.34,1.4,.64,1)}
+.btn:hover{opacity:.95;transform:scale(1.02)}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.err{color:var(--red);margin-top:14px;font-size:13px;min-height:18px}
+.detect{align-self:center;font-size:11.5px;font-weight:700;color:var(--purple);background:#f3eefe;border-radius:100px;padding:4px 12px;white-space:nowrap;display:none;text-transform:capitalize}
+.detect.on{display:block}
+.pchips{display:flex;gap:7px;justify-content:center;flex-wrap:wrap;margin-top:16px}
+.pchip{background:var(--card);border:1px solid var(--br);border-radius:100px;padding:6px 14px;font-size:12.5px;font-weight:600;color:var(--t2);cursor:pointer;transition:all .15s}
+.pchip:hover{border-color:var(--br2)}
+.pchip.on{color:var(--purple);border-color:var(--purple);background:#f8f5ff}
+.phelper{margin-top:10px;font-size:12.5px;color:var(--t3);min-height:18px}
+.srcbadges{display:flex;gap:5px;margin-top:4px;flex-wrap:wrap}
+.srcbadge{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--t2);background:var(--card);border:1px solid var(--br);border-radius:100px;padding:2px 9px}
+.eta{font-size:12px;color:var(--t3);font-weight:500;text-align:center;min-height:18px;margin:-18px 0 16px}
+.stopbtn{display:block;margin:18px auto 0;background:var(--card);border:1px solid var(--br);color:var(--t2);border-radius:100px;padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.stopbtn:hover{color:var(--red);border-color:var(--red)}
+.more{display:none;grid-template-columns:1fr 1fr;gap:8px;max-width:560px;margin:14px auto 0}
+.more.open{display:grid}
+.more input{background:var(--card);border:1px solid var(--br);border-radius:10px;padding:11px 14px;font-size:13.5px;color:var(--t);outline:none;box-shadow:var(--shadow)}
+.more input:focus{border-color:var(--purple)}
+.more input:last-child{grid-column:1/-1}
+
+.twins{margin-top:56px;text-align:left}
+.twins h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;color:var(--t2);font-weight:700}
+.twincard{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid rgba(22,24,29,.05);border-radius:16px;padding:15px 20px;margin-bottom:10px;cursor:pointer;box-shadow:var(--shadow);transition:box-shadow .18s,transform .18s;animation:rise .4s ease backwards}
+.twincard:hover{box-shadow:var(--shadow2);transform:translateY(-2px)}
+.twincard img{width:46px;height:46px;border-radius:50%;background:var(--bg)}
+.twincard .ti{flex:1}.twincard .ti b{font-size:14.5px;font-weight:700}.twincard .ti span{display:block;font-size:12.5px;color:var(--t2);margin-top:1px}
+.twincard .arrow{color:var(--t3);font-size:15px;opacity:0;transform:translateX(-4px);transition:all .18s}
+.twincard:hover .arrow{opacity:1;transform:none}
+.emptyline{font-size:13.5px;color:var(--t3);text-align:center;padding:18px}
+
+/* build */
+.buildwrap{max-width:560px;margin:0 auto;padding-top:8px}
+.bcard{background:var(--card);border:1px solid var(--br);border-radius:20px;padding:32px;box-shadow:var(--shadow2)}
+.spinner{width:30px;height:30px;border:3px solid #ede9fe;border-top-color:var(--purple);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 20px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.buildtitle{font-size:21px;font-weight:800;letter-spacing:-.03em;text-align:center;margin-bottom:4px}
+.builddetail{color:var(--t2);font-size:13px;min-height:20px;text-align:center;margin-bottom:24px}
+.pwrap{display:flex;align-items:center;gap:12px;margin-bottom:24px}
+.pbar{flex:1;height:7px;background:#eef0f3;border-radius:99px;overflow:hidden}
+.pbar i{display:block;height:100%;background:var(--grad);border-radius:99px;width:0%;transition:width .8s cubic-bezier(.4,0,.2,1)}
+.ppct{font-size:13px;font-weight:700;color:var(--t);font-variant-numeric:tabular-nums;min-width:36px;text-align:right}
+.steps{border:1px solid var(--br);border-radius:14px;padding:4px 0;margin-bottom:18px}
+.step{display:flex;align-items:center;gap:12px;padding:8px 16px;font-size:13.5px;color:var(--t3);font-weight:500}
+.step .dot{width:17px;height:17px;border-radius:50%;border:1.5px solid var(--br2);flex-shrink:0;display:grid;place-items:center;transition:all .2s}
+.step.active{color:var(--t);font-weight:600}
+.step.active .dot{border-color:var(--purple)}
+.step.active .dot::after{content:"";width:7px;height:7px;border-radius:50%;background:var(--purple);animation:blink 1.1s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:.25}50%{opacity:1}}
+.step.done{color:var(--t2)}
+.step.done .dot{background:var(--green);border-color:var(--green)}
+.step.done .dot::after{content:"";width:8px;height:4px;border-left:1.5px solid #fff;border-bottom:1.5px solid #fff;transform:rotate(-45deg) translate(.5px,-.5px)}
+/* completion animation */
+.bcard.complete .pwrap,.bcard.complete .eta,.bcard.complete .steps,.bcard.complete .counters,
+.bcard.complete .stopbtn,.bcard.complete .spinner,.bcard.complete .builddetail,.bcard.complete .buildtitle{display:none}
+.bcard.complete{animation:glowpulse 1.6s ease;border-color:rgba(139,92,246,.35)}
+@keyframes glowpulse{0%{box-shadow:var(--shadow2)}35%{box-shadow:0 0 0 6px rgba(139,92,246,.12),0 10px 44px rgba(139,92,246,.25)}100%{box-shadow:var(--shadow2)}}
+.donewrap{display:none;text-align:center;padding:8px 0;animation:rise .35s ease}
+.bcard.complete .donewrap{display:block}
+.check{width:62px;height:62px;margin:4px auto 14px;display:block}
+.check circle{fill:none;stroke:var(--green);stroke-width:2.5;stroke-dasharray:155;stroke-dashoffset:155;animation:draw .5s ease forwards}
+.check path{fill:none;stroke:var(--green);stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:40;stroke-dashoffset:40;animation:draw .35s .45s ease forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.donetitle{font-size:21px;font-weight:800;letter-spacing:-.03em}
+.donesub{font-size:13px;color:var(--t2);margin:3px 0 16px}
+.donechips{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.donechips span{font-size:12px;font-weight:600;background:var(--bg);border:1px solid var(--br);border-radius:100px;padding:6px 14px;animation:rise .35s ease backwards}
+/* enrichment badge */
+.learnbadge{display:none;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:var(--purple);background:#f3eefe;border-radius:100px;padding:5px 13px;margin-left:auto;cursor:default}
+.learnbadge.on{display:flex}
+.learnbadge i{width:7px;height:7px;border-radius:50%;background:var(--purple);animation:blink 1.4s infinite}
+.counters{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.counter{background:var(--bg);border:1px solid var(--br);border-radius:12px;padding:12px 6px;text-align:center}
+.counter b{font-size:19px;font-weight:800;display:block;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.counter span{font-size:10.5px;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+
+/* dashboard */
+.backlink{color:var(--t2);font-size:13.5px;font-weight:500;cursor:pointer;margin-bottom:18px;display:inline-block}
+.backlink:hover{color:var(--t)}
+.dashhead{display:flex;align-items:center;gap:13px;margin-bottom:18px;flex-wrap:wrap;animation:fade .4s ease}
+.dashhead img{width:44px;height:44px;border-radius:50%;border:2px solid var(--card);box-shadow:var(--shadow)}
+.dashhead h1{font-size:20px;letter-spacing:-.03em;font-weight:800}
+.dashhead .sub{color:var(--t2);font-size:12.5px;margin-top:1px}
+/* creator page */
+#scr-dash{max-width:760px}
+#scr-dash .nav{margin-bottom:26px}
+.askcard{background:var(--card);border:1px solid rgba(22,24,29,.05);border-radius:24px;padding:22px;box-shadow:var(--shadow2);animation:rise .4s ease}
+.askcard h4{font-size:15px;font-weight:800;letter-spacing:-.01em}
+.askcard .sub{font-size:12.5px;color:var(--t3);margin:2px 0 16px}
+.msgs{display:none;flex-direction:column;gap:12px;margin:4px 0 16px;animation:rise .3s ease}
+.msgs.on{display:flex}
+/* once chatting: suggestions collapse, panel becomes the conversation */
+.suggtoggle{display:none;font-size:11px;font-weight:600;color:var(--purple);cursor:pointer;text-transform:none;letter-spacing:0;margin-left:10px}
+.askcard.chatting .sgrid{display:none}
+.askcard.chatting .trylabel{margin:8px 0 10px}
+.askcard.chatting .suggtoggle{display:inline}
+.askcard.chatting.showsugg .sgrid{display:grid}
+.askcard.chatting .sub{display:none}
+.askcard.chatting h4{display:none}
+.askcard.chatting .trylabel{visibility:hidden;height:0;margin:0}
+.askcard.chatting .suggtoggle{visibility:visible;display:block;height:auto;margin:0 0 10px}
+.askcard.chatting .sdrop{top:auto;bottom:calc(100% + 8px);transform-origin:bottom}
+.msg{max-width:78%;padding:11px 16px;border-radius:15px;font-size:14px;line-height:1.6;animation:fade .25s ease;white-space:pre-wrap}
+.msg.user{align-self:flex-end;background:var(--grad);color:#fff;font-weight:500;border-bottom-right-radius:5px}
+.msg.bot{align-self:flex-start;background:var(--bg);border:1px solid var(--br);border-bottom-left-radius:5px}
+.msg .srcs{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+.typing{align-self:flex-start;display:flex;gap:4px;padding:14px 16px;background:var(--bg);border-radius:15px}
+.typing i{width:5px;height:5px;border-radius:50%;background:var(--purple);animation:bob 1.2s infinite}
+.typing i:nth-child(2){animation-delay:.18s}.typing i:nth-child(3){animation-delay:.36s}
+@keyframes bob{0%,60%,100%{transform:none;opacity:.35}30%{transform:translateY(-4px);opacity:1}}
+.prodcard{align-self:flex-end;max-width:600px;background:var(--card);border:1px solid var(--br);border-top:2.5px solid var(--purple);border-radius:15px;padding:14px 17px;box-shadow:var(--shadow);animation:rise .25s ease;display:flex;gap:14px;align-items:center}
+.prodcard .pnv{font-size:11.5px;font-weight:600;color:var(--amber);background:var(--amberbg);border-radius:100px;padding:3px 11px}
+.prodcard .psrc{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--t3);background:var(--bg);border:1px solid var(--br);border-radius:100px;padding:2px 8px}
+.prodcard .pwarn{margin-top:7px;font-size:11px;font-weight:600;color:var(--red);background:#fdeaea;border-radius:100px;padding:3px 11px;display:inline-block}
+.prodcard .pimg{width:96px;height:96px;object-fit:contain;border-radius:12px;background:#fff;border:1px solid var(--br);flex-shrink:0;padding:6px}
+.prodcard .pbody{min-width:0}
+.prodcard .pt{font-size:13.5px;font-weight:700;letter-spacing:-.01em;line-height:1.45;margin-bottom:8px}
+.prodcard .pr{display:flex;align-items:center;gap:8px}
+.prodcard .price{font-size:12px;font-weight:700;color:var(--green);background:var(--greenbg);border-radius:100px;padding:3px 11px}
+.prodcard a{font-size:12px;font-weight:600;color:var(--purple);text-decoration:none}
+.prodcard a:hover{text-decoration:underline}
+/* suggested products — compact chips attached to the search bar */
+.trylabel{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t2);margin:14px 0 10px}
+.sgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
+@media(max-width:680px){.sgrid{grid-template-columns:1fr}}
+.scard{display:flex;align-items:center;gap:11px;background:var(--card);border:1px solid var(--br);border-radius:14px;padding:9px 11px;cursor:pointer;transition:box-shadow .18s,transform .18s,border-color .18s;animation:rise .35s ease backwards}
+.scard:hover{box-shadow:var(--shadow2);transform:translateY(-2px);border-color:rgba(139,92,246,.35)}
+.simg{position:relative;width:50px;height:50px;border-radius:10px;background:var(--grad);display:grid;place-items:center;font-size:19px;font-weight:900;color:rgba(255,255,255,.9);flex-shrink:0;overflow:hidden;border:1px solid var(--br)}
+.simg img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#fff;padding:4px}
+.sbody{min-width:0;display:flex;flex-direction:column;gap:3px}
+.scard .sname{font-size:12.5px;font-weight:700;letter-spacing:-.01em;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.scard .scta{display:none}
+.skel{height:70px;border-radius:14px;background:linear-gradient(90deg,var(--card) 25%,#ececf1 50%,var(--card) 75%);background-size:200% 100%;animation:shine 1.3s infinite;border:1px solid var(--br)}
+@keyframes shine{to{background-position:-200% 0}}
+.botrow{display:flex;gap:10px;align-items:flex-start;max-width:84%}
+.botrow .av{width:32px;height:32px;border-radius:50%;flex-shrink:0;border:2px solid var(--card);box-shadow:var(--shadow);object-fit:cover;margin-top:2px}
+.botrow .msg{max-width:100%}
+.msgs .prodcard{margin-left:42px}  /* align with bot bubbles past the avatar gutter */
+.alts{margin-left:42px;background:var(--bg);border:1px solid var(--br);border-radius:14px;padding:10px;animation:rise .3s ease;max-width:84%}
+.alts-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t2);padding:2px 6px 8px}
+.altrow{display:flex;gap:11px;align-items:center;padding:8px;border-radius:10px;cursor:pointer;transition:background .15s}
+.altrow:hover{background:var(--card)}
+.altrow img,.altph{width:42px;height:42px;object-fit:contain;border-radius:9px;border:1px solid var(--br);background:#fff;flex-shrink:0}
+.altt{flex:1;min-width:0}
+.altn{font-size:12.5px;font-weight:600;line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical}
+.altm{font-size:11.5px;color:var(--t3)}.altm b{color:var(--t)}
+.altrow .use{font-size:11.5px;font-weight:700;color:var(--purple);opacity:0;transition:opacity .15s;white-space:nowrap}
+.altrow:hover .use{opacity:1}
+.related{margin-left:42px;display:flex;gap:9px;align-items:center;font-size:12.5px;background:var(--card);border:1px solid var(--br);border-radius:100px;padding:7px 14px;align-self:flex-start;animation:rise .3s ease;max-width:84%}
+.related .reltag{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--purple);background:#f3eefe;border-radius:100px;padding:2px 8px;white-space:nowrap}
+.related .relt{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.related a{color:var(--purple);font-weight:700;text-decoration:none;white-space:nowrap}
+.fups{display:flex;flex-wrap:wrap;gap:7px;animation:rise .3s ease;margin-left:42px}
+.fups button{background:var(--card);border:1px solid var(--br);color:var(--t2);border-radius:100px;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer;transition:all .15s}
+.fups button:hover{color:var(--purple);border-color:var(--purple);transform:translateY(-1px)}
+.why{display:block;margin-top:10px;background:none;border:none;font-size:11.5px;font-weight:600;color:var(--t3);cursor:pointer;padding:0}
+.why:hover{color:var(--purple)}
+.src{font-size:10px;padding:2.5px 9px;border-radius:100px;font-weight:700;flex-shrink:0;text-transform:uppercase;letter-spacing:.04em}
+.src.real{color:var(--green);background:var(--greenbg)}
+.src.inferred{color:var(--amber);background:var(--amberbg)}
+.src.profile{color:var(--t2);background:#eef0f3}
+.sugg{display:flex;gap:7px;padding:0 20px 12px;flex-wrap:wrap}
+.sugg button{font-size:12.5px;font-weight:500;background:var(--card);border:1px solid var(--br);color:var(--t2);border-radius:100px;padding:7px 14px;cursor:pointer;transition:all .15s}
+.sugg button:hover{color:var(--purple);border-color:var(--purple)}
+/* product search — hero bar inside the panel, docks into the chat card mid-conversation */
+.searchwrap{position:relative}
+.askcard.chatting .searchwrap{padding-top:14px;border-top:1px solid var(--br)}
+.searchbox{display:flex;align-items:center;gap:12px;background:var(--bg);border:1.5px solid var(--br2);border-radius:16px;padding:8px 8px 8px 18px;transition:border-color .18s,box-shadow .18s,transform .18s}
+.searchbox:focus-within{border-color:var(--purple);box-shadow:0 0 0 4px rgba(139,92,246,.10),var(--shadow2);transform:translateY(-1px);background:var(--card)}
+.searchbox .sicon{color:var(--t3);flex-shrink:0}
+.searchbox input{flex:1;background:none;border:none;padding:15px 0;color:var(--t);font-size:15px;outline:none}
+.searchbox .btn{padding:14px 24px;font-size:14px}
+.searchbox .btn:active{transform:scale(.98)}
+.askcard.chatting .searchbox{padding:6px 6px 6px 14px}
+.askcard.chatting .searchbox input{padding:10px 0;font-size:14px}
+.askcard.chatting .searchbox .btn{padding:11px 20px;font-size:13.5px}
+.sdrop{position:absolute;left:0;right:0;top:calc(100% + 8px);background:var(--card);border:1px solid var(--br);border-radius:18px;box-shadow:0 14px 44px rgba(16,24,40,.13);overflow:hidden;z-index:40;transform-origin:top;animation:dropin .18s cubic-bezier(.21,.9,.35,1)}
+
+@keyframes dropin{from{opacity:0;transform:scale(.985)}}
+.srow{display:flex;gap:12px;padding:10px 14px;cursor:pointer;align-items:center;animation:rise .22s ease backwards}
+.srow:hover,.srow.hl{background:#f7f4ff}
+.srow img{width:48px;height:48px;object-fit:contain;border-radius:10px;border:1px solid var(--br);background:#fff;flex-shrink:0;transition:transform .18s}
+.srow:hover img{transform:scale(1.03)}
+.srow .st{flex:1;min-width:0}
+.srow .stt{font-size:13px;font-weight:600;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.srow .stm{display:flex;gap:8px;align-items:center;font-size:11.5px;color:var(--t3);margin-top:2px}
+.srow .stm b{color:var(--t);font-weight:700}
+.srow .amz{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:var(--bg);border:1px solid var(--br);border-radius:100px;padding:1.5px 8px}
+.srow .use{font-size:12px;font-weight:700;color:var(--purple);opacity:0;transform:translateX(-3px);transition:all .18s;white-space:nowrap}
+.srow:hover .use,.srow.hl .use{opacity:1;transform:none}
+.snote{padding:13px 16px;font-size:12.5px;color:var(--t3)}
+.srowskel{height:48px;margin:10px 14px;border-radius:12px;background:linear-gradient(90deg,#f1f1f4 25%,#e8e8ee 50%,#f1f1f4 75%);background-size:200% 100%;animation:shine 1.2s infinite}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+.hostline{position:fixed;bottom:12px;right:16px;font-size:10.5px;color:var(--t3);background:var(--card);border:1px solid var(--br);border-radius:100px;padding:4px 12px;box-shadow:var(--shadow);z-index:9}
+/* modal + toast */
+.modal-back{display:none;position:fixed;inset:0;background:rgba(22,24,29,.35);z-index:100;align-items:center;justify-content:center;animation:fade .15s ease}
+.modal-back.on{display:flex}
+.modal{background:var(--card);border-radius:20px;padding:26px;max-width:380px;width:90%;box-shadow:0 20px 60px rgba(16,24,40,.25);animation:rise .2s ease}
+.modal h3{font-size:17px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px}
+.modal p{font-size:13.5px;color:var(--t2);margin-bottom:20px}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end}
+.mcancel{background:var(--card);border:1px solid var(--br);border-radius:10px;padding:10px 18px;font-size:13.5px;font-weight:600;color:var(--t2);cursor:pointer}
+.mcancel:hover{border-color:var(--br2);color:var(--t)}
+.mremove{background:var(--red);border:none;border-radius:10px;padding:10px 18px;font-size:13.5px;font-weight:700;color:#fff;cursor:pointer;transition:opacity .15s}
+.mremove:hover{opacity:.88}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--t);color:#fff;font-size:13px;font-weight:600;border-radius:100px;padding:11px 22px;opacity:0;pointer-events:none;transition:all .25s ease;z-index:110}
+.toast.on{opacity:1;transform:translateX(-50%)}
+/* creator list status + actions */
+.tbadge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;border-radius:100px;padding:3px 10px;display:flex;align-items:center;gap:5px;flex-shrink:0}
+.tbadge.ready{color:var(--green);background:var(--greenbg)}
+.tbadge.building,.tbadge.enriching{color:var(--purple);background:#f3eefe}
+.tbadge.failed{color:var(--red);background:#fdeaea}
+.tbadge i{width:6px;height:6px;border-radius:50%;background:currentColor;animation:blink 1.3s infinite}
+.tdel{opacity:0;background:none;border:none;color:var(--t3);font-size:15px;cursor:pointer;padding:6px;border-radius:8px;transition:all .15s;flex-shrink:0}
+.twincard:hover .tdel{opacity:1}
+.tdel:hover{color:var(--red);background:#fdeaea}
+::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:var(--br2);border-radius:99px}
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<section class="screen active" id="scr-hero">
+  <div class="nav" onclick="showScreen('hero');loadTwins()"><div class="brand">Creator Twin</div></div>
+  <div class="hero">
+    <h1>Any product. <span class="gr">Their take.</span></h1>
+    <p>Paste a creator. Paste a product. Get their take.</p>
+    <div class="inputrow">
+      <input id="channel-input" placeholder="Paste any creator link or @handle" autocomplete="off" oninput="detectBadge()" onkeydown="if(event.key==='Enter')startBuild()">
+      <span class="detect" id="detect-badge"></span>
+      <button class="btn" id="build-btn" onclick="startBuild()">Add creator</button>
+    </div>
+    <div class="pchips" id="pchips">
+      <button class="pchip on" data-p="all" onclick="pickPlatform(this)">All</button>
+      <button class="pchip" data-p="youtube" onclick="pickPlatform(this)">YouTube</button>
+      <button class="pchip" data-p="instagram" onclick="pickPlatform(this)">Instagram</button>
+      <button class="pchip" data-p="tiktok" onclick="pickPlatform(this)">TikTok</button>
+      <button class="pchip" data-p="x" onclick="pickPlatform(this)">X</button>
+      <button class="pchip" data-p="website" onclick="pickPlatform(this)">Website</button>
+      <button class="pchip" data-p="podcast" onclick="pickPlatform(this)">Podcast</button>
+    </div>
+    <div class="phelper" id="phelper"></div>
+    <div class="err" id="hero-err"></div>
+    <div class="twins" id="twins-section" style="display:none"><h2>Your creators</h2><div id="twins-list"></div></div>
+  </div>
+</section>
+
+<!-- BUILD -->
+<section class="screen" id="scr-build">
+  <div class="nav" onclick="showScreen('hero');loadTwins()"><div class="brand">Creator Twin</div></div>
+  <div class="buildwrap"><div class="bcard">
+    <div class="spinner" id="b-spin"></div>
+    <div class="buildtitle" id="b-title">Learning their product taste</div>
+    <div class="builddetail" id="b-detail">Contacting platforms</div>
+    <div class="pwrap"><div class="pbar"><i id="b-bar"></i></div><div class="ppct" id="b-pct">0%</div></div>
+    <div class="eta" id="b-eta"></div>
+    <div class="steps" id="b-steps"></div>
+    <div class="counters" style="grid-template-columns:repeat(3,1fr)">
+      <div class="counter"><b id="c-total">0</b><span>total found</span></div>
+      <div class="counter"><b id="c-products">0</b><span>product candidates</span></div>
+      <div class="counter"><b id="c-sum">0</b><span>summarized</span></div>
+      <div class="counter"><b id="c-chunks">0</b><span>indexed chunks</span></div>
+      <div class="counter"><b id="c-transcripts">0</b><span>real transcripts</span></div>
+      <div class="counter"><b id="c-comments">0</b><span>comments</span></div>
+    </div>
+    <button class="stopbtn" id="b-stop" onclick="stopBuild()">Stop build</button>
+    <div class="donewrap" id="b-done">
+      <svg class="check" viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/><path d="M14 27l8 8 16-16"/></svg>
+      <div class="donetitle">Creator Twin ready</div>
+      <div class="donesub">We'll keep learning in the background.</div>
+      <div class="donechips" id="b-chips"></div>
+    </div>
+  </div></div>
+</section>
+
+<!-- DASHBOARD -->
+<section class="screen" id="scr-dash">
+  <div class="nav" onclick="showScreen('hero');loadTwins()"><div class="brand">Creator Twin</div></div>
+  <span class="backlink" onclick="showScreen('hero');loadTwins()">&larr; All creators</span>
+  <div class="dashhead">
+    <img id="d-avatar" src="" alt="">
+    <div><h1 id="d-name"></h1><div class="sub" id="d-sub"></div><div class="srcbadges" id="d-sources"></div></div>
+    <div class="learnbadge" id="learn-badge"><i></i><span id="learn-text">Still learning</span></div>
+  </div>
+  <div class="askcard">
+    <h4>Get their take</h4>
+    <div class="sub">Pick a recent product or search any Amazon item.</div>
+    <div class="trylabel" id="ask-sub">Try one of these <span class="suggtoggle" onclick="toggleSuggestions()">Show suggestions</span></div>
+    <div class="sgrid" id="sugg-grid"></div>
+    <div class="msgs" id="msgs"></div>
+    <div class="searchwrap">
+      <div class="searchbox" id="searchbox">
+        <svg class="sicon" width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="chat-input" placeholder="Search or paste any Amazon product" aria-label="Search any Amazon product"
+               autocomplete="off" oninput="onSearchInput()" onkeydown="onSearchKey(event)" onblur="setTimeout(closeDrop,150)">
+        <button class="btn" id="take-btn" onclick="submitSearch()">Get take</button>
+      </div>
+      <div class="sdrop" id="sdrop" style="display:none"></div>
+    </div>
+  </div>
+</section>
+<div class="modal-back" id="modal-back" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <h3 id="modal-title">Remove creator?</h3>
+    <p id="modal-body"></p>
+    <div class="modal-actions">
+      <button class="mcancel" onclick="closeModal()">Cancel</button>
+      <button class="mremove" id="modal-confirm">Remove</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<div class="hostline" id="hostline"></div>
+
+<script src="config.js"></script>
+<script src="hosting.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+(function(){
+  const env=detectHosting();
+  const mode=env.isStaticDemo?'Demo mode':'Live API';
+  const where=env.isLocal?'Running on localhost':'Hosted on '+env.environmentLabel;
+  const el=document.getElementById('hostline');
+  if(el)el.textContent=mode+' · '+where.replace(/^(Running on |Hosted on )/,'');
+  if(env.isLocal)console.log(`Creator Twin running on: ${env.hostname||'localhost'}. For live API, set API_BASE_URL in web/config.js.`);
+})();
+const CFG=window.CT_CONFIG||{};
+let DEMO=null;
+async function api(path,opts){
+  if(CFG.DEMO_MODE){return demoApi(path,opts)}
+  const r=await fetch((CFG.API_BASE_URL||'')+path,opts);
+  return {ok:r.ok,json:await r.json()};
+}
+async function demoApi(path,opts){
+  if(!DEMO)DEMO=await fetch('demo/creator_demo.json').then(r=>r.json());
+  if(path==='/api/health')return{ok:true,json:{ok:true,youtube_key:true,llm_provider:'demo'}};
+  if(path==='/api/creators')return{ok:true,json:DEMO.creators};
+  if(path.includes('/suggested-products'))return{ok:true,json:DEMO.suggested||[]};
+  if(path.startsWith('/api/creators/'))return{ok:true,json:DEMO.detail};
+  if(path==='/api/chat'){
+    const msg=JSON.parse(opts.body).message.toLowerCase();
+    const hit=DEMO.canned.find(c=>msg.includes(c.match))||DEMO.canned[DEMO.canned.length-1];
+    return{ok:true,json:hit.reply};
+  }
+  if(path==='/api/build')return{ok:false,json:{detail:'Demo mode — builds need the real backend. See README_DEPLOY.md'}};
+  return{ok:false,json:{detail:'Not available in demo'}};
+}
+let currentCreator=null, currentAvatar='', sessionId=null, pollTimer=null, history=[];
+
+function showScreen(name){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$('scr-'+name).classList.add('active');window.scrollTo(0,0)}
+
+api('/api/health').then(({json:h})=>{
+  if(!(h.youtube_key&&h.llm_provider!=='none'))$('hero-err').textContent='Missing API keys in .env';
+});
+async function loadTwins(){
+  const twins=(await api('/api/creators')).json;
+  $('twins-section').style.display='block';
+  if(!twins.length){
+    $('twins-list').innerHTML='<div class="emptyline">Add a creator to start.</div>';
+    document.querySelector('.twins h2').style.display='none';
+    return;
+  }
+  document.querySelector('.twins h2').style.display='';
+  $('twins-list').innerHTML=twins.map((t,i)=>{
+    const st=t.build_status||'';
+    const badge=st==='running'?['building','Building']
+      :(st==='usable'||st==='enriching')?['enriching','Enriching']
+      :t.chunks>0?['ready','Ready']                       // a working twin is Ready even if a later run failed
+      :(st==='error'||st==='failed')?['failed','Failed']:null;
+    const meta=t.videos_in_db>0
+      ?`${(t.subscriber_count||0).toLocaleString()} subscribers &middot; ${t.videos_in_db.toLocaleString()} items`
+      :(st==='running'?'Setting up…':'No data yet');
+    return `
+    <div class="twincard" style="animation-delay:${i*60}ms" onclick="openTwin('${t.creator_id}')">
+      <img src="${t.thumbnail_url||''}" onerror="this.style.visibility='hidden'">
+      <div class="ti"><b>${esc(t.channel_title)}</b><span>${meta}</span></div>
+      ${badge?`<span class="tbadge ${badge[0]}">${badge[0]==='building'||badge[0]==='enriching'?'<i></i>':''}${badge[1]}</span>`:''}
+      <button class="tdel" title="Remove creator" onclick="event.stopPropagation();confirmRemove('${t.creator_id}',${esc(JSON.stringify(t.channel_title))},'${st}')">&#10005;</button>
+      <div class="arrow">&rarr;</div>
+    </div>`}).join('');
+}
+/* remove creator */
+let pendingRemove=null;
+function confirmRemove(id,name,status){
+  pendingRemove=id;
+  $('modal-body').textContent=(status==='running'||status==='enriching'
+    ?`${name} is still building. Removing it will stop the build and `
+    :'This ')+`removes the local Creator Twin data for ${name}.`;
+  $('modal-back').classList.add('on');
+}
+function closeModal(){$('modal-back').classList.remove('on');pendingRemove=null}
+$('modal-confirm').onclick=async()=>{
+  if(!pendingRemove)return;
+  const id=pendingRemove;closeModal();
+  try{
+    const r=await fetch((CFG.API_BASE_URL||'')+'/api/creators/'+id,{method:'DELETE'});
+    if(!r.ok)throw new Error();
+    try{localStorage.removeItem('ct_convo_'+id)}catch(e){}
+    showToast('Creator removed.');loadTwins();
+  }catch(e){showToast("Couldn't remove creator. Try again.")}
+};
+let toastTimer=null;
+function showToast(msg){
+  const t=$('toast');t.textContent=msg;t.classList.add('on');
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('on'),2600);
+}
+loadTwins();
+
+/* build flow */
+let stepKeys=[],buildMode='product',buildStart=0,currentRun=null;
+async function stopBuild(){
+  if(!currentRun)return;
+  $('b-stop').textContent='Stopping…';$('b-stop').disabled=true;
+  try{await fetch('/api/build/'+currentRun+'/stop',{method:'POST'})}catch(e){}
+}
+function detectPlatform(t){
+  const low=t.toLowerCase();
+  if(!t)return'';
+  if(low.includes('youtube.com')||low.includes('youtu.be'))return'youtube';
+  if(low.includes('instagram.com'))return'instagram';
+  if(low.includes('tiktok.com'))return'tiktok';
+  if(low.includes('twitter.com')||low.startsWith('x.com')||low.includes('//x.com'))return'x';
+  if(low.includes('threads.net'))return'threads';
+  if(low.endsWith('.xml')||low.endsWith('.rss')||low.includes('rss')||low.includes('/feed'))return'podcast';
+  if(t.startsWith('@'))return'youtube';
+  if(t.includes('.'))return'website';
+  return'youtube';
+}
+let heroPlatform='all',userPickedPlatform=false;
+function pickPlatform(el){
+  document.querySelectorAll('.pchip').forEach(c=>c.classList.remove('on'));
+  el.classList.add('on');heroPlatform=el.dataset.p;userPickedPlatform=true;
+}
+function setChip(p){
+  document.querySelectorAll('.pchip').forEach(c=>c.classList.toggle('on',c.dataset.p===p));
+  heroPlatform=p;
+}
+function detectBadge(){
+  const v=$('channel-input').value.trim();
+  const b=$('detect-badge'),h=$('phelper');
+  if(!v){b.className='detect';h.textContent='';return}
+  const isUrl=/:\/\//.test(v)||/^[\w-]+(\.[\w-]+)+(\/|$)/.test(v);
+  if(isUrl){
+    const p=detectPlatform(v);
+    b.textContent=p;b.className='detect on';h.textContent='';
+    if(!userPickedPlatform)setChip(p);
+  }else{
+    // plain handle/name: never assume YouTube
+    b.textContent='All platforms';b.className='detect on';
+    h.textContent="We'll look for this creator across platforms.";
+    if(!userPickedPlatform)setChip('all');
+  }
+}
+async function startBuild(){
+  const body={source:$('channel-input').value.trim(),mode:buildMode,platform:heroPlatform};
+  if(!body.source){$('hero-err').textContent='Paste a creator link or @handle first.';return}
+  $('hero-err').textContent='';$('build-btn').disabled=true;
+  try{
+    const res=await api('/api/build',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body)});
+    const data=res.json;
+    if(!res.ok)throw new Error(data.detail||'Build failed to start');
+    stepKeys=data.steps.map(s=>s.key);
+    currentRun=data.run_id;buildStart=Date.now();
+    $('b-stop').textContent='Stop build';$('b-stop').disabled=false;
+    $('b-steps').innerHTML=data.steps.map(s=>`<div class="step" id="step-${s.key}"><div class="dot"></div>${s.label}</div>`).join('');
+    showScreen('build');
+    pollTimer=setInterval(()=>poll(data.run_id),1800);
+  }catch(e){$('hero-err').textContent=e.message}
+  $('build-btn').disabled=false;
+}
+async function poll(runId){
+  let d;try{d=(await api('/api/build/'+runId)).json}catch(e){return}
+  const p=d.progress||0,pct=Math.round(p*100);
+  $('b-pct').textContent=pct+'%';$('b-bar').style.width=pct+'%';
+  $('b-detail').textContent=d.step_detail||'';
+  // ETA from observed rate
+  if(p>0.04&&p<1&&d.status==='running'){
+    const elapsed=(Date.now()-buildStart)/1000;
+    const left=Math.max(elapsed*(1-p)/p,10);
+    $('b-eta').textContent='first version in about '+(left<90?Math.ceil(left/10)*10+' seconds':Math.ceil(left/60)+' min');
+  }else $('b-eta').textContent='';
+  const cnt=(id,v)=>{$(id).textContent=v>0?v.toLocaleString():(d.status==='running'?'finding…':'0');
+    $(id).style.fontSize=v>0?'':'12px'};
+  cnt('c-total',d.total_found||d.videos_found||0);
+  cnt('c-products',d.product_candidates_found||0);
+  cnt('c-sum',d.summarized_count||d.synthetic_items_generated||0);
+  cnt('c-transcripts',d.transcripts_fetched||0);
+  cnt('c-comments',d.comments_fetched||0);
+  cnt('c-chunks',d.chunks_created||0);
+  const idx=stepKeys.indexOf(d.step);
+  const usable=d.is_usable||d.status==='usable'||d.status==='done'||d.status==='completed'||d.status==='enriching';
+  stepKeys.forEach((k,i)=>{const el=$('step-'+k);if(!el)return;
+    el.className='step'+(i<idx||usable?' done':i===idx?' active':'')});
+  if(usable){
+    clearInterval(pollTimer);
+    $('b-chips').innerHTML=[
+      [d.product_candidates_found,'product candidates'],
+      [d.summarized_count||d.synthetic_items_generated,'summaries'],
+      [d.suggested_products_count,'suggestions']
+    ].filter(x=>x[0]>0).map((x,i)=>`<span style="animation-delay:${.4+i*.12}s">${x[0].toLocaleString()} ${x[1]}</span>`).join('');
+    document.querySelector('.bcard').classList.add('complete');
+    setTimeout(()=>openTwin(d.creator_id),1500);
+  }else if(d.status==='cancelled'){
+    clearInterval(pollTimer);
+    $('b-spin').style.display='none';$('b-stop').style.display='none';
+    $('b-title').textContent='Build stopped';
+    $('b-detail').textContent='You can start a new build anytime.';
+    setTimeout(()=>{showScreen('hero');loadTwins()},1600);
+  }else if(d.status==='error'){
+    clearInterval(pollTimer);
+    $('b-spin').style.display='none';
+    $('b-title').textContent='Build failed';
+    $('b-detail').textContent=(d.errors.slice(-1)[0]||{}).error||d.step_detail||'Unknown error';
+    $('b-detail').style.color='var(--red)';
+  }
+}
+
+/* dashboard */
+async function openTwin(creatorId){
+  currentCreator=creatorId;history=[];sessionId=null;
+  const d=(await api('/api/creators/'+creatorId)).json;
+  const c=d.creator,p=d.profile||{};
+  $('d-avatar').src=c.thumbnail_url||'';
+  currentAvatar=c.thumbnail_url||'';
+  $('d-name').textContent=c.channel_title;
+  $('d-sub').textContent=`${(c.subscriber_count||0).toLocaleString()} subscribers ${c.custom_url?'· '+c.custom_url:''}`;
+  $('d-sources').innerHTML=(d.sources||[])
+    .filter(s=>['connected','found'].includes(s.source_status))
+    .map(s=>`<span class="srcbadge">${esc(s.platform)}</span>`).join('');
+  $('msgs').innerHTML='';$('msgs').classList.remove('on');
+  document.querySelector('.askcard').classList.remove('chatting','showsugg');
+  $('chat-input').placeholder='Search or paste any Amazon product';
+  loadSuggestions(creatorId);
+  restoreConvo(creatorId);
+  watchEnrichment(creatorId);
+  showScreen('dash');
+}
+
+/* ===== conversation persistence (localStorage) ===== */
+let convoLog=[],restoring=false;
+function saveConvo(){
+  if(!currentCreator)return;
+  try{localStorage.setItem('ct_convo_'+currentCreator,
+    JSON.stringify({session:sessionId,history:history.slice(-20),items:convoLog.slice(-40)}))}catch(e){}
+}
+function restoreConvo(creatorId){
+  convoLog=[];
+  let saved=null;
+  try{saved=JSON.parse(localStorage.getItem('ct_convo_'+creatorId)||'null')}catch(e){}
+  if(!saved||!saved.items||!saved.items.length)return;
+  sessionId=saved.session||null;history=saved.history||[];
+  restoring=true;
+  saved.items.forEach(it=>{
+    if(it.t==='msg')addMsg(it.role,it.text,it.sources);
+    else if(it.t==='prod')renderProdCard(it.p);
+  });
+  restoring=false;
+  convoLog=saved.items;
+  $('chat-input').placeholder='Ask a follow-up, or search another product';
+}
+/* ===== background enrichment badge ===== */
+let enrichTimer=null;
+async function watchEnrichment(creatorId){
+  clearInterval(enrichTimer);
+  const check=async()=>{
+    if(currentCreator!==creatorId)return clearInterval(enrichTimer);
+    let p=null;try{p=(await api('/api/creators/'+creatorId+'/progress')).json}catch(e){return}
+    const b=$('learn-badge');
+    if(p&&p.remaining>0){
+      b.classList.add('on');
+      $('learn-text').textContent='Still learning · '+p.remaining.toLocaleString()+' items left';
+      b.title=`Scanned ${p.total_found} · ${p.product_candidates||0} product candidates · ${p.summarized||0} summarized · ${p.chunks} indexed`;
+    }else{b.classList.remove('on');clearInterval(enrichTimer)}
+  };
+  check();enrichTimer=setInterval(check,20000);
+}
+const PILL_MAP={'Recently reviewed':'Recently mentioned','Mentioned recently':'Recently mentioned',
+  'Frequently compared':'Compared','Strong fit':'Good fit','Common topic':'Good fit'};
+async function loadSuggestions(creatorId){
+  const grid=$('sugg-grid');
+  grid.style.display='';$('ask-sub').textContent='Try one of these';
+  grid.innerHTML='<div class="skel"></div>'.repeat(3);
+  let s=[];
+  try{s=(await api('/api/creators/'+creatorId+'/suggested-products')).json;}catch(e){}
+  if(!Array.isArray(s))s=[];
+  if(creatorId!==currentCreator)return;
+  if(!s.length){
+    grid.innerHTML=[['Search a product',''],['Ask for alternatives','What are good alternatives in your niche?'],
+      ['Compare with something else','What would you compare your favorite gear against?']].map(([label,q],i)=>`
+      <div class="scard" style="animation-delay:${i*70}ms" onclick="${q?`$('chat-input').value=${esc(JSON.stringify(q))};sendChat()`:`$('chat-input').focus()`}">
+        <div class="sbody"><div class="sname">${label}</div></div>
+      </div>`).join('');
+    return;
+  }
+  grid.innerHTML=s.slice(0,3).map((p,i)=>`
+    <div class="scard" style="animation-delay:${i*70}ms" onclick="askSuggestion(${esc(JSON.stringify(p.product_name))},${esc(JSON.stringify(p.product_url||''))})">
+      <div class="simg ph">${esc((p.product_name||'?')[0].toUpperCase())}${p.image_url?`<img src="${esc(p.image_url)}" onerror="this.remove()">`:''}</div>
+      <div class="sbody">
+        <div class="sname">${esc(p.product_name)}</div>
+      </div>
+    </div>`).join('');
+}
+function renderProdCard(p){
+  const card=document.createElement('div');card.className='prodcard';
+  const priceHtml=(p.price&&p.price_verified!==false)
+    ?`<span class="price">$${esc(String(p.price)).replace(/^\$/,'')}</span>`
+    :`<span class="pnv">Price not verified</span>`;
+  card.innerHTML=`${p.image?`<img class="pimg" src="${esc(p.image)}" onerror="this.remove()">`:''}
+    <div class="pbody"><div class="pt">${esc((p.title||'').replace(/^Amazon\.com\s*:\s*/i,'').split(':')[0])}</div>
+    <div class="pr">${priceHtml}<span class="psrc">Amazon</span>
+    <a href="${esc(p.url||'#')}" target="_blank">View product &rarr;</a></div>
+    ${p.suspicious?'<div class="pwarn">Listing may be unreliable</div>':''}</div>`;
+  $('msgs').classList.add('on');$('msgs').appendChild(card);
+  dockInput();
+}
+function addAlternatives(alts){
+  const div=document.createElement('div');div.className='alts';
+  div.innerHTML='<div class="alts-title">Better options to check</div>'+alts.map(a=>`
+    <div class="altrow" onclick="askSuggestion(${esc(JSON.stringify(a.product_name))},${esc(JSON.stringify(a.product_url||''))})">
+      ${a.image_url?`<img src="${esc(a.image_url)}" alt="">`:'<div class="altph"></div>'}
+      <div class="altt">
+        <div class="altn">${esc(a.product_name)}</div>
+        <div class="altm">${a.price_text?`<b>${esc(a.price_text)}</b> · `:''}${esc(a.reason||'')}</div>
+      </div>
+      <span class="use">Get take &rarr;</span>
+    </div>`).join('');
+  $('msgs').appendChild(div);dockInput();
+}
+function addRelated(r){
+  const div=document.createElement('div');div.className='related';
+  div.innerHTML=`<span class="reltag">From this creator</span>
+    <span class="relt">${esc(r.title)}</span>
+    <a href="${esc(r.url)}" target="_blank">Open &rarr;</a>`;
+  $('msgs').appendChild(div);dockInput();
+}
+function dockInput(){
+  // unified panel: input is always at the panel bottom; just collapse suggestions
+  if($('msgs').classList.contains('on'))
+    document.querySelector('.askcard').classList.add('chatting');
+}
+function toggleSuggestions(){
+  const a=document.querySelector('.askcard');
+  a.classList.toggle('showsugg');
+  document.querySelector('.suggtoggle').textContent=
+    a.classList.contains('showsugg')?'Hide suggestions':'Show suggestions';
+}
+function addFollowUps(qs){
+  const old=document.querySelector('.fups');if(old)old.remove();
+  const div=document.createElement('div');div.className='fups';
+  qs.forEach(q=>{
+    const b=document.createElement('button');b.textContent=q;
+    b.onclick=()=>{div.remove();$('chat-input').value=q;sendChat()};
+    div.appendChild(b);});
+  $('msgs').appendChild(div);
+  dockInput();
+}
+function askSuggestion(name,url){
+  $('chat-input').value=url||`What's your take on ${name}?`;
+  sendChat();
+}
+
+/* ===== product search (vanilla equivalent of src/lib/productInput.ts) ===== */
+const MOCK_PRODUCTS=[  // realistic demo prices, clearly marked mock_demo
+  {title:"Fitbit Charge 6 Fitness Tracker",price_text:"$129.95",product_url:"https://www.amazon.com/dp/B0CC62ZG1M",image_url:"",rating:4.1,review_count:20608,price_verified:true,metadata_source:"mock_demo"},
+  {title:"WHOOP 4.0 Wearable Health Coach",price_text:"$239.00",product_url:"",image_url:"",rating:4.0,review_count:9000},
+  {title:"Oura Ring Gen 3 Horizon",price_text:"$299.00",product_url:"",image_url:"",rating:4.2,review_count:5400},
+  {title:"Garmin Venu 3 GPS Smartwatch",price_text:"$449.99",product_url:"",image_url:"",rating:4.5,review_count:3100},
+  {title:"Apple Watch Series 9",price_text:"$399.00",product_url:"",image_url:"",rating:4.7,review_count:41000},
+  {title:"Apple MacBook Pro 14-inch",price_text:"$1599.00",product_url:"",image_url:"",rating:4.8,review_count:8800},
+  {title:"Dreame X60 Ultra Robot Vacuum",price_text:"$1299.99",product_url:"",image_url:"",rating:4.4,review_count:950},
+  {title:"Sony WH-1000XM5 Headphones",price_text:"$348.00",product_url:"",image_url:"",rating:4.6,review_count:33000},
+  {title:"Kindle Paperwhite (16 GB)",price_text:"$149.99",product_url:"",image_url:"",rating:4.7,review_count:61000},
+  {title:"Anker 737 Power Bank",price_text:"$109.99",product_url:"",image_url:"",rating:4.6,review_count:14000},
+];
+function isAmazonUrl(s){return /(?:amazon\.[a-z.]+|amzn\.to|a\.co)\//i.test(s||'')}
+function detectInputType(s){s=(s||'').trim();if(!s)return'unknown';if(isAmazonUrl(s)||/^https?:\/\//.test(s))return'amazon_url';return'product_query'}
+let sTimer=null,sResults=[],sIndex=-1,sSeq=0;
+function looksLikeChat(v){
+  // mid-conversation questions shouldn't trigger product autocomplete
+  if(/\?$/.test(v)||/[?]/.test(v))return true;
+  if(/^(what|why|how|is|are|can|could|should|would|do|does|tell|explain|compare|and|but|ok|okay|thanks|so)\b/i.test(v))return true;
+  return history.length>0&&v.split(/\s+/).length>6;
+}
+function onSearchInput(){
+  const v=$('chat-input').value.trim();
+  clearTimeout(sTimer);
+  if(!v||detectInputType(v)!=='product_query'||v.length<3||looksLikeChat(v)){closeDrop();return}
+  openDrop('<div class="srowskel"></div><div class="srowskel"></div><div class="srowskel"></div>');
+  sTimer=setTimeout(()=>runSearch(v),320);
+}
+async function runSearch(q){
+  const seq=++sSeq;let results=[];
+  if(CFG.DEMO_MODE){
+    const terms=q.toLowerCase().split(/\s+/);
+    results=MOCK_PRODUCTS.filter(p=>terms.some(t=>p.title.toLowerCase().includes(t)));
+    if(!results.length)results=MOCK_PRODUCTS.slice(0,4);
+  }else{
+    try{results=((await api('/api/products/search?q='+encodeURIComponent(q))).json||{}).results||[]}catch(e){}
+  }
+  if(seq!==sSeq||$('chat-input').value.trim()!==q)return;
+  sResults=results.slice(0,5);sIndex=-1;
+  if(!sResults.length){openDrop('<div class="snote">No products found. Try a more specific name or paste an Amazon link.</div>');return}
+  openDrop(sResults.map((r,i)=>`
+    <div class="srow" style="animation-delay:${i*40}ms" id="srow-${i}" onmousedown="selectResult(${i})" role="button" aria-label="${esc(r.title)}">
+      ${r.image_url?`<img src="${esc(r.image_url)}" alt="">`:'<div style="width:48px"></div>'}
+      <div class="st">
+        <div class="stt">${esc(r.title)}</div>
+        <div class="stm">${r.price_text?`<b>${esc(r.price_text)}</b>`:''}${r.rating?`<span>★ ${r.rating}${r.review_count?` (${r.review_count.toLocaleString()})`:''}</span>`:''}<span class="amz">Amazon</span></div>
+      </div>
+      <span class="use">Use &rarr;</span>
+    </div>`).join(''));
+}
+function openDrop(html){const d=$('sdrop');d.innerHTML=html;d.style.display='block'}
+function closeDrop(){const d=$('sdrop');if(d){d.style.display='none'}sIndex=-1}
+function selectResult(i){
+  const r=sResults[i];if(!r)return;
+  closeDrop();
+  $('chat-input').value=r.product_url||r.title;
+  sendChat();
+}
+function onSearchKey(e){
+  const open=$('sdrop').style.display!=='none'&&sResults.length;
+  if(e.key==='ArrowDown'&&open){e.preventDefault();sIndex=(sIndex+1)%sResults.length;hl()}
+  else if(e.key==='ArrowUp'&&open){e.preventDefault();sIndex=(sIndex-1+sResults.length)%sResults.length;hl()}
+  else if(e.key==='Escape'){closeDrop()}
+  else if(e.key==='Enter'){e.preventDefault();if(open&&sIndex>=0)selectResult(sIndex);else submitSearch()}
+}
+function hl(){sResults.forEach((_,i)=>{const el=$('srow-'+i);if(el)el.classList.toggle('hl',i===sIndex)})}
+function submitSearch(){clearTimeout(sTimer);closeDrop();sendChat()}
+function cleanAnswerText(t){
+  // strip leaked pipe-separated suggestion lines + dangling separators (old saved answers)
+  let lines=String(t||'').trimEnd().split('\n');
+  while(lines.length){
+    const last=lines[lines.length-1].trim();
+    if(last.includes('|')&&last.length<240&&(/\?/.test(last)||(last.match(/\|/g)||[]).length>=2)){lines.pop();continue}
+    break;
+  }
+  return lines.join('\n').replace(/[ \t]*\|[ \t]*/g,', ').trim();
+}
+function addMsg(role,text,sources){
+  $('msgs').classList.add('on');
+  const div=document.createElement('div');div.className='msg '+role;
+  let raw=String(text||'').replace(/\*\*?([^*]+)\*\*?/g,'$1').replace(/^#+\s*/gm,'').replace(/^[-*]\s+/gm,'');
+  if(role==='bot')raw=cleanAnswerText(raw);
+  div.textContent=raw;
+  const cleanText=div.textContent;
+  if(sources&&sources.length){
+    const why=document.createElement('button');why.className='why';why.textContent='Why this take?';
+    const s=document.createElement('div');s.className='srcs';s.style.display='none';
+    const seen=new Set();
+    sources.forEach(src=>{
+      const key=src.source_type+(src.title||'');if(seen.has(key))return;seen.add(key);
+      const b=document.createElement('span');
+      const real=src.source_type.includes('real_transcript');
+      b.className='src '+(real?'real':src.chunk_type==='creator_profile'?'profile':'inferred');
+      b.textContent=(src.platform?src.platform+' · ':'')+(src.title?src.title.slice(0,24)+' · ':'')+(real?'transcript':'inferred');
+      s.appendChild(b);});
+    why.onclick=()=>{const open=s.style.display==='none';s.style.display=open?'flex':'none';why.textContent=open?'Hide sources':'Why this take?'};
+    div.appendChild(why);div.appendChild(s);}
+  let node=div;
+  if(role==='bot'&&currentAvatar){
+    node=document.createElement('div');node.className='botrow';
+    const av=document.createElement('img');av.className='av';av.src=currentAvatar;av.alt='';
+    node.appendChild(av);node.appendChild(div);
+  }
+  $('msgs').appendChild(node);
+  if(!restoring){convoLog.push({t:'msg',role,text:cleanText,sources:sources||null});saveConvo()}
+  dockInput();
+  const sw=document.querySelector('#scr-dash .searchwrap');
+  (sw||node).scrollIntoView({behavior:'smooth',block:'end'});
+}
+async function sendChat(){
+  const text=$('chat-input').value.trim();
+  if(!text||!currentCreator)return;
+  $('chat-input').value='';
+  const urlOnly=/^https?:\/\/\S+$/.test(text);
+  if(!urlOnly){  // pure links render as a product card instead of an ugly text bubble
+    const shown=text.replace(/https?:\/\/[^\s]+/g,u=>{try{return new URL(u).hostname.replace(/^www\./,'')+' link'}catch(e){return u}});
+    addMsg('user',shown);
+  }else{$('msgs').classList.add('on');dockInput()}
+  history.push({role:'user',content:text});
+  const tw=document.createElement('div');tw.className='botrow';
+  if(currentAvatar){const av=document.createElement('img');av.className='av';av.src=currentAvatar;tw.appendChild(av)}
+  const t=document.createElement('div');t.className='typing';t.innerHTML='<i></i><i></i><i></i>';
+  tw.appendChild(t);
+  $('msgs').classList.add('on');$('msgs').appendChild(tw);dockInput();
+  const _sw=document.querySelector('#scr-dash .searchwrap');
+  (_sw||t).scrollIntoView({behavior:'smooth',block:'end'});
+  try{
+    const r=await api('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({creator_id:currentCreator,message:text,persona_mode:'first_person_creator_take',session_id:sessionId||'',history:history.slice(0,-1)})});
+    const d=r.json;tw.remove();
+    if(d.error)throw new Error(d.error);
+    (d.products||[]).forEach(p=>{renderProdCard(p);convoLog.push({t:'prod',p});});
+    if(d.session_id)sessionId=d.session_id;
+    addMsg('bot',d.answer,d.sources);history.push({role:'assistant',content:d.answer});
+    if(d.alternative_products&&d.alternative_products.length)addAlternatives(d.alternative_products);
+    if(d.relevant_creator_content&&d.relevant_creator_content.length)addRelated(d.relevant_creator_content[0]);
+    if(d.follow_ups&&d.follow_ups.length)addFollowUps(d.follow_ups);
+    $('chat-input').placeholder='Ask a follow-up, or search another product';
+    $('chat-input').focus();
+  }catch(e){tw.remove();addMsg('bot','Error: '+e.message)}
+}
+function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+</script>
+</body>
+</html>
