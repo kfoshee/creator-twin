@@ -71,5 +71,25 @@ check("deal creator gets deal prompts", any("deal" in f["product_name"].lower() 
 fb2 = get_fallback_suggestions_for_creator({"primary_content_pillars": ["wearable accuracy", "sleep tracking"]})
 check("wearable creator gets wearable prompts", any("tracker" in f["product_name"].lower() for f in fb2))
 
+
+# --- title-derived candidates + new junk patterns ---
+from creator_twin.intelligence.suggested_products import candidates_from_titles
+check("'Posted 5' rejected", not is_valid_product_suggestion("Posted 5"))
+cands = candidates_from_titles([
+    "CVS Beauty Event Skincare Deals This Week!",
+    "Sol de Janeiro Body Butter Dupes at Walmart",
+    "Dove shampoo stock up price at Walgreens",
+    "Posted 5", "June 2nd"])
+names = [c["product_name"].lower() for c in cands]
+check("derives 'CVS skincare deals'", any("cvs skincare deals" in n for n in names))
+check("derives 'Sol de Janeiro ... dupes'", any("dupes" in n and "sol de janeiro" in n for n in names))
+check("derives 'Dove shampoo deal'", any("dove shampoo" in n for n in names))
+check("title candidates contain no junk", all(is_valid_product_suggestion(c["product_name"]) for c in cands))
+# refiner gracefully disabled without key
+from creator_twin.intelligence.suggestion_refiner import enabled, refine_suggestions_with_gemini
+check("gemini refiner off by default", not enabled())
+r, src = refine_suggestions_with_gemini({"id":"x","name":"t"}, [{"product_name":"a"}])
+check("refiner falls back to deterministic", r is None and src == "deterministic")
+
 print(f"\n{PASS} passed, {len(FAIL)} failed" + (f": {FAIL}" if FAIL else ""))
 sys.exit(1 if FAIL else 0)

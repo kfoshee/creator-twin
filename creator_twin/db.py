@@ -355,6 +355,13 @@ CREATE TABLE IF NOT EXISTS llm_usage_logs (
     created_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS suggestion_cache (
+    cache_key TEXT PRIMARY KEY,
+    provider TEXT,
+    suggestions_json TEXT,
+    created_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS chat_cache (
     cache_key TEXT PRIMARY KEY,
     payload TEXT,

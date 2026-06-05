@@ -48,10 +48,55 @@ _INVALID_RX = [
     re.compile(rf"^\s*{_MONTHS}\.?\s+\d{{1,2}}(st|nd|rd|th)?\s*$", re.I),
     re.compile(rf"^\s*\d{{1,2}}(st|nd|rd|th)?\s+(of\s+)?{_MONTHS}\s*$", re.I),
     re.compile(r"^\s*(today|yesterday|tonight|tomorrow|this week)('s)?\s*$", re.I),
+    re.compile(r"^\s*(posted|uploaded|new video|live|premiere)\s*#?\d*\s*$", re.I),
     re.compile(r"^[\W\d\s]+$"),  # only digits/punctuation
 ]
 _GENERIC_SINGLE = {"video", "post", "reel", "short", "upload", "deal", "deals", "stuff",
-                   "things", "items", "finds", "products", "amazon", "link", "links"}
+                   "things", "items", "finds", "find", "products", "product", "amazon",
+                   "link", "links", "today", "posted"}
+
+_RETAILERS = ["cvs", "walgreens", "target", "walmart", "amazon", "costco", "ulta",
+              "sephora", "dollar tree", "kroger", "aldi", "sam's club"]
+_DEAL_CATS = ["skincare", "shampoo", "body wash", "makeup", "beauty", "cleaning", "laundry",
+              "household", "kitchen", "grocery", "snack", "vitamins", "diapers", "haircare",
+              "fragrance", "candle", "detergent", "toothpaste", "razor", "deodorant"]
+
+
+def candidates_from_titles(titles: list) -> list:
+    """Turn raw titles into clickable shopping prompts — deterministic, $0.
+
+    'CVS Beauty Event Skincare Deals' -> 'CVS skincare deals'
+    'Sol de Janeiro Body Butter Dupes at...' -> 'Sol de Janeiro body butter dupes'
+    """
+    out, seen = [], set()
+
+    def add(title, stype, reason):
+        title = re.sub(r"\s+", " ", title).strip()[:45]
+        key = title.lower()
+        if key in seen or not is_valid_product_suggestion(title):
+            return
+        seen.add(key)
+        out.append({"product_name": title, "suggestion_type": stype,
+                    "reason_label": reason, "reason_detail": "From recent titles"})
+
+    for t in titles:
+        if not t:
+            continue
+        low = t.lower()
+        m = re.search(r"([A-Z][A-Za-z'&. ]{2,40}?)\s+[Dd]upes?\b", t)
+        if m:
+            add(f"{m.group(1).strip()} dupes", "shopping_prompt", "Dupe find")
+        for r in _RETAILERS:
+            if r in low:
+                for c in _DEAL_CATS:
+                    if c in low:
+                        add(f"{r.upper() if r == 'cvs' else r.title()} {c} deals",
+                            "deal_prompt", "Deal idea")
+        m2 = re.search(r"\b([A-Z][a-z]{2,12})\s+(shampoo|body wash|skincare|makeup|detergent|"
+                       r"toothpaste|razors?|deodorant|lotion|serum)\b", t)
+        if m2:
+            add(f"{m2.group(1)} {m2.group(2)} deal", "deal_prompt", "Deal idea")
+    return out[:8]
 
 VALID_TYPES = ("exact_product", "inferred_product", "product_category",
                "category_prompt", "comparison_prompt", "shopping_prompt", "deal_prompt")
@@ -165,9 +210,49 @@ def generate_suggested_products(creator_id: str, limit: int = 8) -> list:
     suggestions.sort(key=lambda s: -s["final_score"])
     suggestions = suggestions[:limit]
 
-    # deterministic niche fallback first (zero AI cost), LLM only as last resort
+    # title-derived shopping prompts (deterministic, $0): "CVS skincare deals", "X dupes"...
+    with get_db() as db:
+        recent_titles = [r["title"] for r in db.execute(
+            "SELECT title FROM content_items WHERE creator_id=? AND title != '' "
+            "ORDER BY published_at DESC LIMIT 30", (creator_id,)).fetchall()]
+    profile = get_fingerprint(creator_id) or {}
+    suggestion_source = "deterministic"
+    for cand in candidates_from_titles(recent_titles):
+        if len(suggestions) >= limit:
+            break
+        if any(s["product_name"].lower() == cand["product_name"].lower() for s in suggestions):
+            continue
+        suggestions.append({
+            "product_name": cand["product_name"], "product_brand": "", "product_category": "",
+            "product_url": "", "image_url": "", "price_text": "", "source_content_id": None,
+            "source_platform": "", "source_title": "", "source_url": "",
+            "reason_label": cand["reason_label"], "reason_detail": cand["reason_detail"],
+            "suggestion_type": cand["suggestion_type"], "confidence": 0.6,
+            "recency_score": 0.6, "relevance_score": 0.6, "final_score": 0.5,
+        })
+
+    # optional single Gemini cleanup call (off by default; NEVER Claude)
+    from .suggestion_refiner import enabled as gemini_enabled, refine_suggestions_with_gemini
+    if gemini_enabled():
+        refined, suggestion_source = refine_suggestions_with_gemini(
+            {"id": creator_id, "name": creator_name,
+             "niche": str(profile.get("creator_positioning", ""))[:80]},
+            suggestions + [{"product_name": t, "source_title": t} for t in recent_titles[:10]],
+            max_suggestions=limit)
+        if refined:
+            exact_keep = [s for s in suggestions if s["suggestion_type"] in ("exact_product", "inferred_product")][:2]
+            suggestions = exact_keep + [{
+                "product_name": r["product_name"], "product_brand": "", "product_category": "",
+                "product_url": "", "image_url": "", "price_text": "", "source_content_id": None,
+                "source_platform": "", "source_title": "", "source_url": "",
+                "reason_label": r["reason_label"], "reason_detail": r["reason_detail"],
+                "suggestion_type": r["suggestion_type"], "confidence": r.get("confidence", 0.7),
+                "recency_score": 0.6, "relevance_score": 0.7, "final_score": 0.55,
+            } for r in refined if not any(
+                s["product_name"].lower() == r["product_name"].lower() for s in exact_keep)]
+
+    # deterministic niche fallback (zero AI cost), LLM only as last resort
     if len(suggestions) < max(3, limit // 2):
-        profile = get_fingerprint(creator_id) or {}
         for f in get_fallback_suggestions_for_creator(profile):
             if len(suggestions) >= limit:
                 break
@@ -247,7 +332,8 @@ def generate_suggested_products(creator_id: str, limit: int = 8) -> list:
                  s["product_category"], s["product_url"], s["image_url"], s["price_text"],
                  s["source_content_id"], s["source_platform"], s["source_title"], s["source_url"],
                  s["reason_label"], s["reason_detail"], s["suggestion_type"], s["confidence"],
-                 s["recency_score"], s["relevance_score"], s["final_score"], "{}", now(), now()))
+                 s["recency_score"], s["relevance_score"], s["final_score"],
+                 json.dumps({"source": suggestion_source}), now(), now()))
     return suggestions
 
 
@@ -257,7 +343,8 @@ def get_suggested_products(creator_id: str, limit: int = 8, regenerate: bool = F
             rows = [dict(r) for r in db.execute(
                 """SELECT suggested_product_id, product_name, product_brand, product_category,
                           product_url, image_url, price_text, reason_label, reason_detail,
-                          source_title, source_url, suggestion_type, confidence, final_score
+                          source_title, source_url, suggestion_type, confidence, final_score,
+                          metadata_json
                    FROM suggested_products WHERE creator_id=?
                    ORDER BY final_score DESC LIMIT ?""", (creator_id, limit)).fetchall()]
         # filter stale junk at the read path too; regenerate if the stored set is bad/thin
@@ -269,16 +356,19 @@ def get_suggested_products(creator_id: str, limit: int = 8, regenerate: bool = F
         if len(valid) >= 3 or (rows and len(valid) == len(rows)):
             for v in valid:
                 v["query_text"] = v["product_name"]
+                v["suggestion_source"] = json.loads(v.pop("metadata_json", None) or "{}").get("source", "deterministic")
             return valid
     generate_suggested_products(creator_id, limit)
     with get_db() as db:
         rows = [dict(r) for r in db.execute(
             """SELECT suggested_product_id, product_name, product_brand, product_category,
                       product_url, image_url, price_text, reason_label, reason_detail,
-                      source_title, source_url, suggestion_type, confidence, final_score
+                      source_title, source_url, suggestion_type, confidence, final_score,
+                      metadata_json
                FROM suggested_products WHERE creator_id=?
                ORDER BY final_score DESC LIMIT ?""", (creator_id, limit)).fetchall()]
     out = [r for r in rows if is_valid_product_suggestion(r["product_name"])]
     for v in out:
         v["query_text"] = v["product_name"]
+        v["suggestion_source"] = json.loads(v.pop("metadata_json", None) or "{}").get("source", "deterministic")
     return out
