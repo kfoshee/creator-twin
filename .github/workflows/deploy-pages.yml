@@ -23,7 +23,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build static demo (no secrets — DEMO_MODE only)
+      - name: Build frontend (Live API when API_BASE_URL repo variable is set; demo otherwise)
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
         run: bash scripts/build_static_demo.sh
 
       - name: Upload artifact

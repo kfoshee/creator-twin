@@ -1,0 +1,30 @@
+# Render Blueprint — deploy the REAL Creator Twin backend in one click:
+# https://dashboard.render.com/blueprints -> New Blueprint Instance -> pick this repo.
+# Then set the three secret env vars when prompted.
+services:
+  - type: web
+    name: creator-twin-api
+    runtime: python
+    plan: starter            # starter = persistent disk for the SQLite DB; free tier loses data on deploy
+    buildCommand: pip install -r requirements.txt && python scripts/migrate.py
+    startCommand: uvicorn server.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    disk:
+      name: creator-twin-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: APP_ENV
+        value: production
+      - key: DEMO_MODE
+        value: "false"
+      - key: CORS_ORIGINS
+        value: https://kfoshee.github.io
+      - key: FRONTEND_URL
+        value: https://kfoshee.github.io/creator-twin
+      - key: ANTHROPIC_API_KEY
+        sync: false           # set in dashboard — never committed
+      - key: YOUTUBE_API_KEY
+        sync: false

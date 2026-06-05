@@ -4,7 +4,7 @@
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cp .env.example .env        # add YOUTUBE_API_KEY + GEMINI_API_KEY or ANTHROPIC_API_KEY
+cp .env.example .env        # add YOUTUBE_API_KEY + ANTHROPIC_API_KEY
 .venv/bin/python server/app.py        # serves frontend + API at http://127.0.0.1:7860
 ```
 
@@ -55,7 +55,7 @@ Backend env vars:
 | Var | Purpose |
 |---|---|
 | `YOUTUBE_API_KEY` | YouTube ingest |
-| `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | LLM (one required) |
+| `ANTHROPIC_API_KEY` | LLM (required) |
 | `DATABASE_URL` | optional Postgres |
 | `INSTAGRAM_ACCESS_TOKEN`, `X_BEARER_TOKEN`, `TIKTOK_ACCESS_TOKEN` | optional connectors |
 | `EMBEDDING_MODEL` | optional vector backend |

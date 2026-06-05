@@ -67,12 +67,12 @@ python creator_twin/review/approve_profile.py --creator-id CR_ID
 | Var | Required | Purpose |
 |---|---|---|
 | `YOUTUBE_API_KEY` | for YouTube | Data API v3 |
-| `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` | yes (one) | LLM (Anthropic preferred) |
+| `ANTHROPIC_API_KEY` | yes | LLM (Claude) |
 | `INSTAGRAM_ACCESS_TOKEN` | optional | Graph API mode |
 | `X_BEARER_TOKEN` | optional | X API mode |
 | `TIKTOK_ACCESS_TOKEN` | optional | future official adapter |
 | `EMBEDDING_MODEL` | optional | default `fts5_bm25`; set to enable a vector backend |
-| `ANTHROPIC_MODEL` / `GEMINI_MODEL` | optional | model overrides |
+| `ANTHROPIC_MODEL` | optional | model override |
 
 ## How facts are labeled
 

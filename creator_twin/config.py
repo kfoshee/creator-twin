@@ -4,6 +4,7 @@ from pathlib import Path
 
 # Load .env if present (no python-dotenv dependency required)
 ROOT = Path(__file__).resolve().parent.parent
+ENV = os.environ.get("APP_ENV", "development")  # "production" on hosted backends
 _env_file = ROOT / ".env"
 if _env_file.exists():
     for line in _env_file.read_text().splitlines():
@@ -12,7 +13,8 @@ if _env_file.exists():
             k, _, v = line.partition("=")
             os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
-DATA_DIR = ROOT / "data"
+# DATA_DIR env var lets hosted deployments mount a persistent disk (e.g. /data on Render)
+DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT / "data"))
 CACHE_DIR = DATA_DIR / "cache"
 PROFILE_DIR = DATA_DIR / "profiles"
 DB_PATH = DATA_DIR / "creator_twin.db"
@@ -21,7 +23,6 @@ for d in (DATA_DIR, CACHE_DIR, PROFILE_DIR):
 
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 # Optional platform tokens — connectors degrade gracefully without them
 INSTAGRAM_ACCESS_TOKEN = os.environ.get("INSTAGRAM_ACCESS_TOKEN", "")
@@ -36,7 +37,6 @@ DEEP_PASS_PER_PLATFORM = 25
 WEBSITE_MAX_PAGES = 25
 
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
 
 # Folders from legacy companion projects whose transcripts we preserve/reuse.
 LEGACY_TRANSCRIPT_DIRS = [

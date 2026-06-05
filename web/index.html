@@ -390,9 +390,20 @@ let currentCreator=null, currentAvatar='', sessionId=null, pollTimer=null, histo
 
 function showScreen(name){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$('scr-'+name).classList.add('active');window.scrollTo(0,0)}
 
-api('/api/health').then(({json:h})=>{
-  if(!(h.youtube_key&&h.llm_provider!=='none'))$('hero-err').textContent='Missing API keys in .env';
-});
+(async()=>{
+  const hl=$('hostline'),env=detectHosting();
+  try{
+    const {json:h}=await api('/api/health');
+    if(!(h.youtube_key_present??h.youtube_key)||h.llm_provider==='none')
+      $('hero-err').textContent='Missing API keys on the backend.';
+    if(hl&&!CFG.DEMO_MODE)hl.textContent='Live API · '+(env.isLocal?'localhost':env.environmentLabel);
+  }catch(e){
+    if(!CFG.DEMO_MODE){
+      $('hero-err').textContent='Live backend unavailable. Check API_BASE_URL.';
+      if(hl)hl.textContent='Backend unavailable';
+    }
+  }
+})();
 async function loadTwins(){
   const twins=(await api('/api/creators')).json;
   $('twins-section').style.display='block';

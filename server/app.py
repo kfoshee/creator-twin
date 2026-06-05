@@ -24,6 +24,15 @@ log = logging.getLogger("creator_twin.server")
 app = FastAPI(title="Creator Twin Fast Build")
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
+# CORS: GitHub Pages frontend + local dev. Extra origins via CORS_ORIGINS (comma-separated).
+import os
+from fastapi.middleware.cors import CORSMiddleware
+_origins = ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:7860",
+            "http://localhost:7860", "https://kfoshee.github.io"]
+_origins += [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+app.add_middleware(CORSMiddleware, allow_origins=_origins, allow_methods=["*"],
+                   allow_headers=["*"], allow_credentials=False)
+
 # startup hygiene: stale runs/locks from crashed sessions must not block new builds
 try:
     from creator_twin.build_locks import cleanup_stale
@@ -111,13 +120,22 @@ def hosting_js():
 @app.get("/api/health")
 def health():
     import creator_twin.config as cfg
-    return {"ok": True, "youtube_key": bool(cfg.YOUTUBE_API_KEY), "llm_provider": provider()}
+    return {
+        "ok": True, "status": "ok",
+        "mode": "production" if cfg.ENV == "production" else "development",
+        "demo_mode": False,
+        "database": "sqlite",
+        "youtube_key": bool(cfg.YOUTUBE_API_KEY),
+        "youtube_key_present": bool(cfg.YOUTUBE_API_KEY),
+        "anthropic_key_present": bool(cfg.ANTHROPIC_API_KEY),
+        "llm_provider": provider(),
+    }
 
 
 @app.post("/api/build")
 def start_build(req: BuildRequest):
     if provider() == "none":
-        raise HTTPException(400, "No LLM key set — add ANTHROPIC_API_KEY or GEMINI_API_KEY to .env")
+        raise HTTPException(400, "No LLM key set — add ANTHROPIC_API_KEY to .env")
 
     sources = {}
     seed_post = None
@@ -502,4 +520,6 @@ def enrich_start(creator_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=7860)
+    port = int(os.environ.get("PORT", 7860))
+    host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"  # hosted vs local
+    uvicorn.run(app, host=host, port=port)
