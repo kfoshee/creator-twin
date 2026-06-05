@@ -117,6 +117,24 @@ def _mini_profile(profile: dict) -> str:
             parts.append(f"{key.replace('_', ' ')}: " + "; ".join(str(x)[:60] for x in v[:4]))
     return "\n".join(parts)[:2000]
 
+def _retailer_cards(price_ctx):
+    """Found prices become price cards; the rest are honest 'Open search' links."""
+    if not price_ctx:
+        return []
+    cards = []
+    seen = set()
+    for r in price_ctx.get("results", [])[:4]:
+        cards.append({"retailer": r["retailer"], "url": r["product_url"],
+                      "price_text": r["price_text"], "title": r["title"][:60],
+                      "reason": "Checked just now", "checked": True})
+        seen.add(r["retailer"].lower())
+    for s in price_ctx.get("search_links", []):
+        if s["retailer"].lower() not in seen:
+            cards.append({"retailer": s["retailer"], "url": s["url"], "price_text": None,
+                          "reason": s.get("reason", ""), "checked": False})
+    return cards[:7]
+
+
 # ---- main entry ----
 
 def ask(creator_id: str, question: str, persona_mode: str = DEFAULT_PERSONA_MODE,
@@ -172,7 +190,10 @@ def ask(creator_id: str, question: str, persona_mode: str = DEFAULT_PERSONA_MODE
                 subject = {"title": title, "price": current.get("price", ""),
                            "query_text": (current.get("title") or q)[:80]}
             if subject.get("title"):
-                price_ctx = get_price_context(subject)
+                from .intelligence.retailer_price_checker import check_retailer_prices
+                price_ctx = check_retailer_prices(subject)
+                price_ctx["subject_price"] = subject.get("price", "")
+                price_ctx["subject_verified"] = bool(subject.get("price_verified"))
         except Exception as e:
             log.warning("price context failed: %s", e)
 
@@ -213,8 +234,23 @@ def ask(creator_id: str, question: str, persona_mode: str = DEFAULT_PERSONA_MODE
 
     price_block = ""
     if price_ctx:
-        from .intelligence.price_intelligence import summarize_for_prompt
-        price_block = "\nPRICE CONTEXT:\n" + summarize_for_prompt(price_ctx) + "\n"
+        lines = []
+        if price_ctx.get("subject_verified") and price_ctx.get("subject_price"):
+            lines.append(f"Listed price on the pasted page: ${price_ctx['subject_price']} (verified)")
+        if price_ctx["status"] in ("checked", "partial") and price_ctx["results"]:
+            checked = ", ".join(f"{r['price_text']} at {r['retailer']}" for r in price_ctx["results"][:3])
+            lines.append(f"LIVE PRICES JUST CHECKED: {checked}.")
+            if price_ctx.get("best_price"):
+                b = price_ctx["best_price"]
+                lines.append(f"Best price found: {b['price_text']} at {b['retailer']}. "
+                             "Say naturally: 'I found it around {price} at {retailer}'.")
+            lines.append("The UI shows these as 'Prices I found' cards. Reference them, do not "
+                         "tell the user to go check stores manually.")
+        else:
+            lines.append("Live store pricing is NOT connected for other retailers. Say once: "
+                         "'I do not have live store pricing connected yet, so I'd compare the "
+                         "links below.' Then give category buying advice. Never claim you checked.")
+        price_block = "\nPRICE CONTEXT:\n" + "\n".join(lines) + "\n"
 
     ctx_block = ""
     if current.get("title"):
@@ -312,10 +348,10 @@ buttons, never as part of your prose."""
 
     return {
         "answer": answer,
-        "retailer_actions": (price_ctx or {}).get("search_links", []),
-        "price_context": ({k: price_ctx[k] for k in
-                           ("price_verified", "estimated_fair_price_range", "best_known_option")}
-                          if price_ctx else None),
+        "retailer_actions": _retailer_cards(price_ctx),
+        "price_status": (price_ctx or {}).get("status"),
+        "price_context": ({"status": price_ctx["status"], "best_price": price_ctx.get("best_price"),
+                           "price_range": price_ctx.get("price_range")} if price_ctx else None),
         "session_id": session_id,
         "follow_ups": follow_ups,
         "suggested_followups": follow_ups,

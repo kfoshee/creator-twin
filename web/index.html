@@ -184,6 +184,7 @@ button{font-family:inherit}
 .botrow .msg{max-width:100%}
 .msgs .prodcard{margin-left:42px}  /* align with bot bubbles past the avatar gutter */
 .alts{margin-left:42px;background:var(--bg);border:1px solid var(--br);border-radius:14px;padding:10px;animation:rise .3s ease;max-width:84%}
+.rtnote{font-weight:500;text-transform:none;letter-spacing:0;color:var(--t3);margin-left:8px}
 .alts-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t2);padding:2px 6px 8px}
 .altrow{display:flex;gap:11px;align-items:center;padding:8px;border-radius:10px;cursor:pointer;transition:background .15s}
 .altrow:hover{background:var(--card)}
@@ -301,7 +302,7 @@ button{font-family:inherit}
   <div class="buildwrap"><div class="bcard">
     <div class="spinner" id="b-spin"></div>
     <div class="buildtitle" id="b-title">Building quick twin</div>
-    <div class="builddetail" id="b-detail">Starter twin from metadata — no paid AI used.</div>
+    <div class="builddetail" id="b-detail">Building a starter twin from recent content. Usually takes about a minute.</div>
     <div class="pwrap"><div class="pbar"><i id="b-bar"></i></div><div class="ppct" id="b-pct">0%</div></div>
     <div class="eta" id="b-eta"></div>
     <div class="steps" id="b-steps"></div>
@@ -315,7 +316,7 @@ button{font-family:inherit}
     <div class="donewrap" id="b-done">
       <svg class="check" viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/><path d="M14 27l8 8 16-16"/></svg>
       <div class="donetitle">Creator Twin ready</div>
-      <div class="donesub" id="done-sub">Starter twin built from metadata.</div>
+      <div class="donesub" id="done-sub">Built from recent content and product signals.</div>
       <div class="donechips" id="b-chips"></div>
     </div>
   </div></div>
@@ -573,7 +574,7 @@ async function poll(runId){
   cnt('c-total',d.total_found||d.videos_found||0);
   cnt('c-products',d.product_candidates_found||0);
   cnt('c-sum',d.suggested_products_count||0);
-  cnt('c-ai',d.ai_calls_used||0);
+  cnt('c-ai',(d.ai_calls_used||0)+(d.gemini_calls_used||0));
   const idx=stepKeys.indexOf(d.step);
   const usable=d.is_usable||d.status==='usable'||d.status==='done'||d.status==='completed'||d.status==='enriching';
   stepKeys.forEach((k,i)=>{const el=$('step-'+k);if(!el)return;
@@ -667,9 +668,26 @@ async function watchEnrichment(creatorId){
   };
   check();enrichTimer=setInterval(check,20000);
 }
-async function improveTwin(){
+function improveTwin(){
   if(!currentCreator||improving)return;
-  if(!confirm('Deep enrichment analyzes more videos and may use additional AI credits. Continue?'))return;
+  pendingRemove=null;
+  $('modal-title').textContent='Improve this twin?';
+  $('modal-body').innerHTML='Analyzes more videos, adds summaries and better recommendations.'+
+    '<br><br><label style="font-size:13px;display:flex;gap:8px;align-items:center">'+
+    '<input type="checkbox" id="use-claude-improve"> Use premium Claude style synthesis</label>'+
+    '<div style="margin-top:10px;font-size:12px;color:var(--t3)">This may use additional Gemini/Claude credits.</div>';
+  $('modal-confirm').textContent='Improve';
+  $('modal-confirm').onclick=async()=>{
+    closeModal();improving=true;
+    $('learn-text').textContent='Improving\u2026';
+    try{await api('/api/creators/'+currentCreator+'/enrich/start',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({use_claude:!!document.getElementById('use-claude-improve')?.checked})})}
+    catch(e){improving=false;showToast("Couldn't start enrichment.")}
+  };
+  $('modal-back').classList.add('on');
+}
+async function _improveTwinOld(){
   improving=true;
   $('learn-text').textContent='Improving\u2026';
   try{await api('/api/creators/'+currentCreator+'/enrich/start',{method:'POST'})}
@@ -716,18 +734,21 @@ function renderProdCard(p){
   $('msgs').classList.add('on');$('msgs').appendChild(card);
   dockInput();
 }
-function addRetailerActions(actions){
+function addRetailerActions(actions,status){
   if(!actions||!actions.length)return;
   const old=document.querySelector('.retailers');if(old)old.remove();
+  const anyChecked=actions.some(a=>a.checked);
+  const title=anyChecked?'Prices I found':'Places to compare';
+  const note=anyChecked?'Live prices checked':'Live price search not connected. Open to check.';
   const div=document.createElement('div');div.className='alts retailers';
-  div.innerHTML='<div class="alts-title">Places I\'d check</div>'+actions.slice(0,6).map(a=>`
+  div.innerHTML=`<div class="alts-title">${title} <span class="rtnote">${note}</span></div>`+actions.slice(0,7).map(a=>`
     <a class="altrow" href="${esc(a.url)}" target="_blank" rel="noopener">
       <div class="altph rticon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 7h18l-2 12H5L3 7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 7a4 4 0 018 0" stroke="currentColor" stroke-width="2"/></svg></div>
       <div class="altt">
-        <div class="altn">${esc(a.retailer)}</div>
-        <div class="altm">${esc(a.reason||'Check price')}</div>
+        <div class="altn">${esc(a.retailer)}${a.title?` · ${esc(a.title)}`:''}</div>
+        <div class="altm">${a.checked&&a.price_text?`<b>${esc(a.price_text)}</b> · ${esc(a.reason)}`:esc(a.reason||'Open search')}</div>
       </div>
-      <span class="use">Open &rarr;</span>
+      <span class="use">${a.checked?'Open':'Open search'} &rarr;</span>
     </a>`).join('');
   $('msgs').appendChild(div);dockInput();
 }
@@ -940,7 +961,7 @@ async function sendChat(){
     (d.products||[]).forEach(p=>{renderProdCard(p);convoLog.push({t:'prod',p});});
     if(d.session_id)sessionId=d.session_id;
     addMsg('bot',d.answer,d.sources);history.push({role:'assistant',content:d.answer});
-    if(d.retailer_actions&&d.retailer_actions.length)addRetailerActions(d.retailer_actions);
+    if(d.retailer_actions&&d.retailer_actions.length)addRetailerActions(d.retailer_actions,d.price_status);
     if(d.alternative_products&&d.alternative_products.length)addAlternatives(d.alternative_products);
     if(d.relevant_creator_content&&d.relevant_creator_content.length)addRelated(d.relevant_creator_content[0]);
     if(d.follow_ups&&d.follow_ups.length)addFollowUps(d.follow_ups);

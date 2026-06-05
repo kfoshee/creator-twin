@@ -182,6 +182,26 @@ def fetch_videos(creator: dict, max_videos=200, force_refresh=False, progress=No
     video_ids = fetch_playlist_video_ids(creator["uploads_playlist"], limit=max_videos,
                                          force_refresh=force_refresh, progress=progress)
     log.info("Found %d videos in uploads playlist", len(video_ids))
+    if not video_ids:
+        # some channels 404 their uploads playlist — fall back to search.list
+        log.info("uploads playlist empty/404 — falling back to search API")
+        page, cap = None, max_videos or 200
+        while len(video_ids) < cap:
+            params = {"part": "id", "channelId": creator["channel_id"], "type": "video",
+                      "order": "date", "maxResults": 50}
+            if page:
+                params["pageToken"] = page
+            try:
+                data = api_get("search", params, force_refresh)
+            except YouTubeError:
+                break
+            video_ids += [i["id"]["videoId"] for i in data.get("items", [])
+                          if i.get("id", {}).get("videoId")]
+            page = data.get("nextPageToken")
+            if not page:
+                break
+        video_ids = video_ids[:cap]
+        log.info("search fallback found %d videos", len(video_ids))
 
     # map videos -> playlists (top playlists only, cheap)
     playlists = fetch_playlists(creator["channel_id"], force_refresh)

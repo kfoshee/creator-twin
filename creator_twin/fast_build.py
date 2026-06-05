@@ -47,14 +47,16 @@ STEPS = [
     ("ready", "Ready"),
 ]
 
-MODES = ("fast", "preview", "product", "full")
+MODES = ("smart", "fast", "preview", "product", "full")
 
-# Per-mode budgets. fast = default: usable in 30-60s, ~10 LLM calls, no comments.
-MODE_CFG = {  # default builds make ZERO Claude calls; deep AI is behind "Improve this twin"
-    "fast":    dict(fetch=25,   deep_pass=0,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6),
-    "preview": dict(fetch=25,   deep_pass=0,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6),
-    "product": dict(fetch=100,  deep_pass=0,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6),
-    "full":    dict(fetch=None, deep_pass=30, summaries=24, llm_calls=None, comments=True,  enrich=True,  suggestions=8),
+# Claude calls are ZERO in every default mode. smart (default) uses up to 3 small
+# Gemini calls for a real starter taste model; fast = instant zero-AI demo.
+MODE_CFG = {
+    "smart":   dict(fetch=50,   deep_pass=3,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6, gemini=True),
+    "fast":    dict(fetch=25,   deep_pass=0,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6, gemini=False),
+    "preview": dict(fetch=25,   deep_pass=0,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6, gemini=False),
+    "product": dict(fetch=100,  deep_pass=0,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6, gemini=True),
+    "full":    dict(fetch=None, deep_pass=30, summaries=24, llm_calls=None, comments=True,  enrich=True,  suggestions=8, gemini=True),
 }
 
 
@@ -118,7 +120,7 @@ def select_deep_pass(creator_id, per_platform=DEEP_PASS_PER_PLATFORM):
     return total
 
 
-def fast_build(sources: dict, creator_id=None, intake_file=None, mode="fast",
+def fast_build(sources: dict, creator_id=None, intake_file=None, mode="smart",
                max_items=None, max_product_items=None, deep_pass=None,
                include_non_product=False, background_enrich=None,
                skip_transcripts=False, skip_comments=None, force_refresh=False,
@@ -133,7 +135,7 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="fast",
     run_id = run_id or new_id("run")
     creator_id = _ensure_creator(creator_id, sources, intake_file)
     if mode not in MODES:
-        mode = "fast"
+        mode = "smart"
     mcfg = MODE_CFG[mode]
     fetch_limit = max_items if max_items else mcfg["fetch"]
     deep_pass = deep_pass if deep_pass is not None else mcfg["deep_pass"]
@@ -232,6 +234,11 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="fast",
                     "Instagram/TikTok/X often block public scraping, so no content could be "
                     "ingested. To build a full twin: paste a YouTube channel or website, or "
                     "connect/upload platform data (export files or API tokens).")
+            if "youtube" in sources:
+                raise RuntimeError(
+                    "YouTube's API returned no accessible videos for this channel (it may be "
+                    "restricted or recently migrated). Try the channel's /videos URL, another "
+                    "platform, or a website.")
             raise RuntimeError(
                 "No supported sources found. Try a YouTube channel, Instagram profile, "
                 "TikTok profile, website URL, or upload files.")
@@ -267,8 +274,8 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="fast",
             n_selected = db.execute(
                 "SELECT COUNT(*) AS n FROM content_items WHERE creator_id=? AND selected_for_fast_build=1",
                 (creator_id,)).fetchone()["n"]
-        mode_label = {"fast": "Quick twin", "preview": "Quick twin",
-                      "product": "Product catalog", "full": "Full catalog"}[mode]
+        mode_label = {"smart": "Starter twin", "fast": "Quick twin", "preview": "Quick twin",
+                      "product": "Product catalog", "full": "Full catalog"}.get(mode, "Starter twin")
         report("select", f"{mode_label}: {n_selected} items selected ({content_found} total found)", 0.33,
                selected_for_fast_build=n_selected)
 
@@ -276,9 +283,12 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="fast",
         report("fingerprint", "Building starter taste model...", 0.40)
         if mode == "full":
             generate_fingerprint(creator_id)  # deep, LLM-backed (task=deep_fingerprint)
+        elif mcfg.get("gemini"):
+            from creator_twin.intelligence.creator_fingerprint import generate_gemini_starter_fingerprint
+            generate_gemini_starter_fingerprint(creator_id)  # 2 small Gemini calls, Claude 0
         else:
             from creator_twin.intelligence.creator_fingerprint import generate_starter_fingerprint
-            generate_starter_fingerprint(creator_id)  # deterministic, 0 LLM calls
+            generate_starter_fingerprint(creator_id)  # deterministic, 0 AI calls
         report("fingerprint", "Taste model ready", 0.52)
 
         n_synth = 0
@@ -294,7 +304,8 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="fast",
         n_sugg = 0
         try:
             from creator_twin.intelligence.suggested_products import generate_suggested_products
-            n_sugg = len(generate_suggested_products(creator_id, limit=mcfg["suggestions"]))
+            n_sugg = len(generate_suggested_products(creator_id, limit=mcfg["suggestions"],
+                                                     force_gemini=mcfg.get("gemini", False)))
         except Exception as e:
             add_run_error(run_id, f"suggestions: {e}")
         report("suggestions", f"{n_sugg} starter suggestions", 0.80, suggested_products_count=n_sugg,
@@ -311,6 +322,11 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="fast",
 
         # USABLE — route the user in; deeper enrichment is MANUAL ("Improve this twin")
         budget_clear()
+        with get_db() as db:
+            g_used = db.execute(
+                "SELECT COUNT(*) AS n FROM llm_usage_logs WHERE provider='gemini' AND creator_id=? "
+                "AND created_at >= ?", (creator_id, time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(t0)))).fetchone()["n"]
+        update_run(run_id, gemini_calls_used=g_used)
         update_run(run_id, status="usable", is_usable=1, first_usable_at=now(), progress=1.0,
                    step="ready",
                    step_detail=("Starter twin ready. Click 'Improve this twin' for deeper analysis."
@@ -394,9 +410,11 @@ def _background_enrichment(creator_id: str, run_id: str, lock_id: str = None):
     try:
         stage("Enriching top of catalog", lambda: enrich(creator_id, max_batches=4))  # ~100 items max
         stage("Reading each platform", lambda: generate_platform_summaries(creator_id))
-        stage("Modeling style", lambda: generate_style_model(creator_id))
-        stage("Modeling audience", lambda: generate_audience_model(creator_id))
-        stage("Commerce intelligence", lambda: generate_commerce_intelligence(creator_id))
+        import creator_twin.background_worker as _bw
+        if getattr(_bw, "USE_CLAUDE_STYLE", False):  # premium opt-in only
+            stage("Modeling style", lambda: generate_style_model(creator_id))
+            stage("Modeling audience", lambda: generate_audience_model(creator_id))
+            stage("Commerce intelligence", lambda: generate_commerce_intelligence(creator_id))
         stage("Prepping buying questions", lambda: generate_qa_pairs(creator_id))
         stage("Improving recommendations", lambda: __import__(
             "creator_twin.intelligence.suggested_products", fromlist=["generate_suggested_products"]

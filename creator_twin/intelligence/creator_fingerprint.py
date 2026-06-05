@@ -82,6 +82,72 @@ def generate_fingerprint(creator_id: str) -> dict:
     return profile
 
 
+def generate_gemini_starter_fingerprint(creator_id: str) -> dict:
+    """SMART starter: 2 small Gemini calls (taste model + voice rules), Claude 0.
+    Falls back to the deterministic starter on any failure."""
+    from ..llm_gemini import GeminiError, available, complete_json as gcomplete
+    if not available():
+        return generate_starter_fingerprint(creator_id)
+    profiles, items, _, _, _ = _gather(creator_id)
+    with get_db() as db:
+        c = db.execute("SELECT channel_title, channel_description FROM creators WHERE creator_id=?",
+                       (creator_id,)).fetchone()
+    name = (c["channel_title"] if c else "") or "this creator"
+    bio = ((c["channel_description"] if c else "") or "")[:600]
+    titles = [(it["title"] or it["caption"] or "")[:120] for it in items[:30] if it["title"] or it["caption"]]
+    descs = [(it["description"] or "")[:300] for it in items[:10] if it["description"]]
+
+    try:
+        # Gemini call 1: niche + product world + taste
+        taste = gcomplete(
+            f"Creator: {name}\nBio: {bio}\nRecent titles:\n" + "\n".join(f"- {t}" for t in titles) +
+            "\nDescriptions (excerpts):\n" + "\n".join(d for d in descs[:5]) +
+            '\n\nReturn JSON: {"creator_niche":"...","product_categories":["..."],'
+            '"deal_categories":["..."],"creator_taste_bullets":["..."],"buying_criteria":["..."],'
+            '"likely_audience":"...","confidence":"low|medium|high"}',
+            system="You analyze creators' product taste from public metadata. Be specific to THIS creator.",
+            task="gemini_starter_taste", creator_id=creator_id)
+
+        # Gemini call 2: first-person voice + take rules
+        voice = gcomplete(
+            f"Creator: {name} | niche: {taste.get('creator_niche', '')}\n"
+            f"Title style examples:\n" + "\n".join(f"- {t}" for t in titles[:15]) +
+            '\n\nReturn JSON: {"first_person_voice_rules":["..."],"product_take_rules":["..."],'
+            '"price_value_rules":["..."],"things_to_avoid":["..."]}',
+            system="You define how an AI twin should sound when giving first-person product takes "
+                   "in this creator's voice. Short actionable rules.",
+            task="gemini_starter_voice", creator_id=creator_id)
+    except GeminiError as e:
+        log.warning("gemini starter failed (%s) — deterministic fallback", e)
+        return generate_starter_fingerprint(creator_id)
+
+    profile = {
+        "one_sentence_identity": f"{name}: {taste.get('creator_niche', '')}",
+        "creator_positioning": taste.get("creator_niche", ""),
+        "primary_content_pillars": (taste.get("product_categories") or [])[:6],
+        "deal_categories": (taste.get("deal_categories") or [])[:6],
+        "target_audience": taste.get("likely_audience", ""),
+        "tone_style": "; ".join((voice.get("first_person_voice_rules") or [])[:3]),
+        "repeated_advice": (taste.get("creator_taste_bullets") or [])[:6],
+        "recommendation_logic": "; ".join((taste.get("buying_criteria") or [])[:4]),
+        "product_take_rules": (voice.get("product_take_rules") or [])[:5],
+        "price_value_rules": (voice.get("price_value_rules") or [])[:4],
+        "boundaries_and_disallowed_claims": (voice.get("things_to_avoid") or [])[:4],
+        "recommended_tools": [],
+        "facts_needing_creator_review": ["starter profile built by Gemini from metadata"],
+        "source_confidence": taste.get("confidence", "medium"),
+    }
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO creator_fingerprint (creator_id, source_type, confidence, profile_json, approved_by_creator, created_at, updated_at)"
+            " VALUES (?,?,?,?,0,?,?)",
+            (creator_id, "gemini_starter", taste.get("confidence", "medium"),
+             json.dumps(profile), now(), now()))
+    (PROFILE_DIR / f"{creator_id}_fingerprint.json").write_text(json.dumps(profile, indent=2))
+    log.info("gemini starter fingerprint for %s (2 calls)", creator_id)
+    return profile
+
+
 def generate_starter_fingerprint(creator_id: str) -> dict:
     """ZERO-LLM starter fingerprint from metadata: names, titles, keywords,
     extracted products. Good enough to ground takes; deep version is manual."""

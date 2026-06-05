@@ -56,7 +56,7 @@ def enrich(creator_id: str, max_batches: int = None) -> int:
     return total
 
 
-def start_background_enrichment(creator_id: str):
+def start_background_enrichment(creator_id: str, use_claude: bool = False):
     """Fire-and-forget worker thread (used by the server after fast build)."""
     if creator_id in _ACTIVE:
         return
@@ -64,6 +64,8 @@ def start_background_enrichment(creator_id: str):
 
     def worker():
         try:
+            import creator_twin.background_worker as bw
+            bw.USE_CLAUDE_STYLE = use_claude
             enrich(creator_id)
         finally:
             _ACTIVE.discard(creator_id)

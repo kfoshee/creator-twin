@@ -51,7 +51,7 @@ RUN_LOGS: dict = {}
 class BuildRequest(BaseModel):
     source: str = ""          # universal: any creator link/handle, platform auto-detected
     platform: str = "auto"    # auto | all | youtube | instagram | tiktok | x | website | podcast
-    mode: str = "fast"        # fast (default, cheap) | product | full
+    mode: str = "smart"       # smart (default, gemini starter) | fast | product | full
     channel_url: str = ""
     instagram_handle: str = ""
     tiktok_handle: str = ""
@@ -210,7 +210,7 @@ def start_build(req: BuildRequest):
         RUN_LOGS[run_id].append({"time": now(), "step": step, "detail": detail})
         RUN_LOGS[run_id] = RUN_LOGS[run_id][-200:]
 
-    mode = req.mode if req.mode in ("fast", "preview", "product", "full") else "fast"
+    mode = req.mode if req.mode in ("smart", "fast", "preview", "product", "full") else "smart"
 
     def worker():
         try:
@@ -543,12 +543,16 @@ def regenerate_suggestions(creator_id: str, limit: int = 8):
     return get_suggested_products(creator_id, limit, regenerate=True)
 
 
+class EnrichRequest(BaseModel):
+    use_claude: bool = False
+
+
 @app.post("/api/creators/{creator_id}/enrich/start")
-def enrich_start(creator_id: str):
+def enrich_start(creator_id: str, req: EnrichRequest = None):
     from creator_twin.background_worker import pending_count, start_background_enrichment
     n = pending_count(creator_id)
     if n:
-        start_background_enrichment(creator_id)
+        start_background_enrichment(creator_id, use_claude=bool(req and req.use_claude))
     return {"ok": True, "pending": n, "started": bool(n)}
 
 

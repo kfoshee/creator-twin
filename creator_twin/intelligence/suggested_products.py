@@ -153,7 +153,7 @@ def _metric(metrics_json):
     return max((int(m.get(k, 0) or 0) for k in ("views", "likes", "like_count")), default=0)
 
 
-def generate_suggested_products(creator_id: str, limit: int = 8) -> list:
+def generate_suggested_products(creator_id: str, limit: int = 8, force_gemini: bool = False) -> list:
     extract_creator_products(creator_id)
 
     with get_db() as db:
@@ -233,12 +233,12 @@ def generate_suggested_products(creator_id: str, limit: int = 8) -> list:
 
     # optional single Gemini cleanup call (off by default; NEVER Claude)
     from .suggestion_refiner import enabled as gemini_enabled, refine_suggestions_with_gemini
-    if gemini_enabled():
+    if gemini_enabled() or force_gemini:
         refined, suggestion_source = refine_suggestions_with_gemini(
             {"id": creator_id, "name": creator_name,
              "niche": str(profile.get("creator_positioning", ""))[:80]},
             suggestions + [{"product_name": t, "source_title": t} for t in recent_titles[:10]],
-            max_suggestions=limit)
+            max_suggestions=limit, force=force_gemini)
         if refined:
             exact_keep = [s for s in suggestions if s["suggestion_type"] in ("exact_product", "inferred_product")][:2]
             suggestions = exact_keep + [{

@@ -98,8 +98,18 @@ def generate_catalog(creator_id: str, force_refresh=False, progress=None,
             if it["text_body"]:
                 block += f"\nREAL_TEXT:\n{it['text_body'][:5000]}\n"
         try:
-            notes = complete_json(CONTENT_SUMMARY_PROMPT.format(
-                fingerprint_summary=fp, items_block=block), system=CATALOG_SYSTEM, max_tokens=8000, task=task)
+            _p = CONTENT_SUMMARY_PROMPT.format(fingerprint_summary=fp, items_block=block)
+            notes = None
+            if task == "deep_summary":
+                from ..llm_gemini import GeminiError, available as _gav, complete_json as _gjson
+                if _gav():
+                    try:
+                        notes = _gjson(_p, system=CATALOG_SYSTEM, task="deep_summary_gemini",
+                                       creator_id=creator_id, max_tokens=1200)
+                    except GeminiError as ge:
+                        log.warning("gemini deep summary failed (%s), trying Claude", ge)
+            if notes is None:
+                notes = complete_json(_p, system=CATALOG_SYSTEM, max_tokens=8000, task=task)
         except LLMError as e:
             log.warning("catalog batch failed (%d items): %s", len(batch), e)
             with get_db() as db:

@@ -11,6 +11,8 @@ import os
 
 import requests
 
+from ..config import ROOT as _ROOT  # noqa: F401  (loads .env first)
+
 log = logging.getLogger("creator_twin.suggestion_refiner")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
@@ -30,9 +32,10 @@ def enabled() -> bool:
     return USE_GEMINI and bool(GEMINI_API_KEY)
 
 
-def refine_suggestions_with_gemini(creator: dict, raw_candidates: list, max_suggestions: int = 6):
+def refine_suggestions_with_gemini(creator: dict, raw_candidates: list, max_suggestions: int = 6,
+                                   force: bool = False):
     """Returns (suggestions list or None, source). Cached; never raises."""
-    if not enabled() or not raw_candidates:
+    if not ((enabled() or (force and GEMINI_API_KEY)) and raw_candidates):
         return None, "deterministic"
     from ..db import get_db, now
     from ..db_writer import write
