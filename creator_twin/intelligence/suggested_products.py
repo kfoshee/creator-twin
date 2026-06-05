@@ -52,8 +52,8 @@ _INVALID_RX = [
     re.compile(r"^[\W\d\s]+$"),  # only digits/punctuation
     # truncated title fragments: "Apple Products That DON", "Things You Won"
     re.compile(r"\b(that|which|who|don|doesn|won|isn|aren|couldn|shouldn)'?\s*$", re.I),
-    # video-format fragments: "PUBLIX HAUL 5", "Target Run", "CVS Shop With Me"
-    re.compile(r"\b(hauls?|vlogs?|restock|unboxing|shop with me|runs?)\s*#?\d*\s*$", re.I),
+    # video-format fragments: "PUBLIX HAUL 5", "CVS Couponing 4", "Target Run"
+    re.compile(r"\b(hauls?|vlogs?|restock|unboxing|shop with me|runs?|couponing|breakdowns?)\s*#?\d*\s*$", re.I),
     # bare retailer (+number) fragments: "Publix 5", "TARGET 4", "CVS"
     re.compile(r"^(publix|cvs|walgreens|target|walmart|costco|aldi|kroger|ulta|sephora|"
                r"amazon|dollar tree|dollar general|sam's club)\s*#?\d*\s*$", re.I),
