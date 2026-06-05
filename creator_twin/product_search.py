@@ -113,7 +113,8 @@ def search_products(query: str, limit: int = 6) -> list:
             results = _parse_search(r.text, limit=10)
     except Exception as e:
         log.warning("amazon search failed for %r: %s", query, e)
-    cache.write_text(json.dumps(results))
+    if results:  # never cache rate-limited/empty responses — retry next time
+        cache.write_text(json.dumps(results))
     return results[:limit]
 
 
