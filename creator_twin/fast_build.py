@@ -208,7 +208,15 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="preview",
                content_found=content_found, total_found=content_found, videos_found=content_found,
                transcripts_fetched=transcripts, comments_fetched=n_comments)
         if content_found == 0:
-            raise RuntimeError("No content ingested from any source — check handles/exports/keys")
+            social_only = set(sources) <= {"instagram", "tiktok", "x", "threads"}
+            if social_only:
+                raise RuntimeError(
+                    "Instagram/TikTok/X often block public scraping, so no content could be "
+                    "ingested. To build a full twin: paste a YouTube channel or website, or "
+                    "connect/upload platform data (export files or API tokens).")
+            raise RuntimeError(
+                "No supported sources found. Try a YouTube channel, Instagram profile, "
+                "TikTok profile, website URL, or upload files.")
 
         # Step 3: product relevance classification (rule-based, free)
         from creator_twin.intelligence.product_relevance import classify_creator_content

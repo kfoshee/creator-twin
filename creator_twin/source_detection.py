@@ -16,6 +16,32 @@ _URL_RULES = [
 ]
 
 
+_IG_NON_PROFILE = {"p", "reel", "reels", "stories", "explore", "tv", "accounts", "direct"}
+
+
+def classify_instagram_url(url: str) -> dict:
+    """Profile vs post vs reel vs story. NEVER returns 'p' or 'reel' as a handle."""
+    path = urllib.parse.urlparse(url if "://" in url else "https://" + url).path
+    segs = [s for s in path.split("/") if s]
+    out = {"platform": "instagram", "input_type": "instagram_profile", "handle": None,
+           "shortcode": None, "canonical_url": url.split("?")[0],
+           "should_build_creator": False, "needs_profile_resolution": False}
+    if not segs:
+        return out
+    first = segs[0].lower()
+    if first in ("p", "reel", "reels", "tv"):
+        out.update(input_type="instagram_reel" if first in ("reel", "reels") else "instagram_post",
+                   shortcode=segs[1] if len(segs) > 1 else None,
+                   needs_profile_resolution=True)
+    elif first == "stories":
+        out.update(input_type="instagram_story",
+                   handle=(segs[1].lstrip("@") if len(segs) > 1 else None),
+                   should_build_creator=len(segs) > 1)
+    elif first not in _IG_NON_PROFILE:
+        out.update(handle=segs[0].lstrip("@"), should_build_creator=True)
+    return out
+
+
 def _handle_from_url(url: str) -> str:
     path = urllib.parse.urlparse(url if "://" in url else "https://" + url).path
     seg = next((s for s in path.split("/") if s and s not in ("channel", "user", "c")), "")
@@ -44,6 +70,10 @@ def detect_creator_source(raw: str) -> dict:
             if rx.search(low):
                 result.update(primary_platform=platform, detected_platforms=[platform],
                               normalized_handle=_handle_from_url(s), confidence=0.95)
+                if platform == "instagram":
+                    ig = classify_instagram_url(s)
+                    result["instagram"] = ig
+                    result["normalized_handle"] = ig["handle"] or ""
                 return result
         if low.endswith((".xml", ".rss")) or "rss" in low or "/feed" in low:
             result.update(primary_platform="podcast", detected_platforms=["podcast"], confidence=0.85)

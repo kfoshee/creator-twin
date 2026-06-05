@@ -63,6 +63,16 @@ class InstagramConnector(BaseConnector):
             self.errors.append(f"graph media: {r.status_code}")
         if self.config.get("export_path"):
             return self._load_export(self.config["export_path"])
+        seed = self.config.get("seed_post")
+        if seed:  # a pasted post URL that resolved — ingest it as a single seed item
+            return [{"_src": "seed_post",
+                     "id": seed.get("shortcode") or "seed",
+                     "caption": seed.get("caption", ""),
+                     "permalink": seed.get("canonical_url", ""),
+                     "timestamp": "",
+                     "media_type": "VIDEO" if seed.get("media_type") == "reel" else "IMAGE",
+                     "media_url": seed.get("image_url", ""),
+                     "thumbnail_url": seed.get("image_url", "")}]
         if self.mode == "stub":
             self.errors.append("instagram: handle stored; add INSTAGRAM_ACCESS_TOKEN or an export to ingest posts")
         return []

@@ -120,9 +120,27 @@ def start_build(req: BuildRequest):
         raise HTTPException(400, "No LLM key set — add ANTHROPIC_API_KEY or GEMINI_API_KEY to .env")
 
     sources = {}
+    seed_post = None
     if req.source.strip():
         from creator_twin.source_detection import detect_creator_source
         det = detect_creator_source(req.source)
+        ig = det.get("instagram")
+        if ig and ig["needs_profile_resolution"]:
+            # Instagram post/reel URL: resolve the creator, never build a creator named "p"
+            from creator_twin.connectors.instagram_post import resolve_instagram_post
+            res = resolve_instagram_post(req.source.strip())
+            if res.get("status") == "resolved":
+                det["normalized_handle"] = res["handle"]
+                det["primary_platform"] = "instagram"
+                seed_post = res
+            else:
+                raise HTTPException(422, res.get("message",
+                    "This is an Instagram post, not a creator profile. Paste the creator's "
+                    "Instagram profile URL (instagram.com/creatorhandle), a YouTube link, "
+                    "or a website instead."))
+        if det.get("primary_platform") == "instagram" and not det["normalized_handle"]:
+            raise HTTPException(422, "Couldn't find a creator handle in that Instagram URL. "
+                                     "Paste the creator's profile URL like instagram.com/creatorhandle.")
         sel = req.platform
         if sel == "auto":
             sel = det["primary_platform"] or "all"   # plain handles NEVER default to YouTube
@@ -160,6 +178,8 @@ def start_build(req: BuildRequest):
         sources["website"] = {"website_url": req.website_url.strip()}
     if req.podcast_rss.strip():
         sources["podcast"] = {"rss_url": req.podcast_rss.strip()}
+    if seed_post and "instagram" in sources:
+        sources["instagram"]["seed_post"] = seed_post  # pasted post becomes seed content
     if not sources:
         raise HTTPException(400, "Add at least one source")
     import creator_twin.config as cfg
