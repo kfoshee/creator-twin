@@ -156,6 +156,26 @@ def ask(creator_id: str, question: str, persona_mode: str = DEFAULT_PERSONA_MODE
 
     current = ctx.get("current_product") or {}
 
+    # proactive price intelligence (deterministic, $0): on new product or price-intent question
+    PRICE_INTENT = re.compile(r"(good price|should i buy|is this a deal|better price|where.*buy|"
+                              r"cheaper|compare price|real deal|worth it|best size)", re.I)
+    price_ctx = None
+    if products or PRICE_INTENT.search(question):
+        try:
+            from .intelligence.price_intelligence import get_price_context, summarize_for_prompt
+            if products:
+                subject = products[0]
+            else:
+                # use the session product, else the question itself minus the intent phrase
+                q = PRICE_INTENT.sub("", question).strip(" ?.!,")
+                title = current.get("title") or q
+                subject = {"title": title, "price": current.get("price", ""),
+                           "query_text": (current.get("title") or q)[:80]}
+            if subject.get("title"):
+                price_ctx = get_price_context(subject)
+        except Exception as e:
+            log.warning("price context failed: %s", e)
+
     # retrieval with query expansion: follow-ups inherit the product's terms
     search_query = question
     for p in products:
@@ -191,6 +211,11 @@ def ask(creator_id: str, question: str, persona_mode: str = DEFAULT_PERSONA_MODE
             lines.append(line)
         product_block = "\nPRODUCT THE FAN IS ASKING ABOUT:\n" + "\n".join(lines) + "\n"
 
+    price_block = ""
+    if price_ctx:
+        from .intelligence.price_intelligence import summarize_for_prompt
+        price_block = "\nPRICE CONTEXT:\n" + summarize_for_prompt(price_ctx) + "\n"
+
     ctx_block = ""
     if current.get("title"):
         ctx_block = (f"\nCONVERSATION CONTEXT:\n- Current product under discussion: {current['title']}"
@@ -205,7 +230,7 @@ def ask(creator_id: str, question: str, persona_mode: str = DEFAULT_PERSONA_MODE
 
     prompt = f"""CONTEXT CHUNKS:
 {context}
-{product_block}{ctx_block}{f'RECENT CONVERSATION:{convo}' if convo else ''}
+{product_block}{price_block}{ctx_block}{f'RECENT CONVERSATION:{convo}' if convo else ''}
 
 FAN QUESTION: {question}
 
@@ -235,7 +260,7 @@ buttons, never as part of your prose."""
         raw = cached["raw"]
     else:
         task = "final_product_take" if (products or current.get("title")) else "followup_chat"
-        raw = complete(prompt, system=system, max_tokens=600, temperature=0.7,
+        raw = complete(prompt, system=system, max_tokens=400, temperature=0.7,
                        task=task, creator_id=creator_id)
         if not convo_history:
             from .db_writer import write as _w
@@ -246,6 +271,7 @@ buttons, never as part of your prose."""
     if "FOLLOWUPS:" in raw:
         answer, _, tail = raw.rpartition("FOLLOWUPS:")
         follow_ups = [q.strip() for q in tail.split("|") if q.strip()][:3]
+    answer = answer.replace("\u2014", ", ").replace("\u2013", ", ").replace(" , ", ", ")
     answer, salvaged = _clean_answer(answer)
     if salvaged and not follow_ups:
         follow_ups = salvaged[:3]
@@ -281,8 +307,15 @@ buttons, never as part of your prose."""
     _add_message(session_id, "assistant", answer, {"weak_verdict": weak})
     _save_session(session_id, ctx)
 
+    if price_ctx and (products or current.get("title")):
+        follow_ups = ["Compare prices", "Best size to buy", "Find cheaper options"][:3]
+
     return {
         "answer": answer,
+        "retailer_actions": (price_ctx or {}).get("search_links", []),
+        "price_context": ({k: price_ctx[k] for k in
+                           ("price_verified", "estimated_fair_price_range", "best_known_option")}
+                          if price_ctx else None),
         "session_id": session_id,
         "follow_ups": follow_ups,
         "suggested_followups": follow_ups,

@@ -184,6 +184,8 @@ button{font-family:inherit}
 .alts-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t2);padding:2px 6px 8px}
 .altrow{display:flex;gap:11px;align-items:center;padding:8px;border-radius:10px;cursor:pointer;transition:background .15s}
 .altrow:hover{background:var(--card)}
+.altrow{text-decoration:none;color:var(--t)}
+.rticon{display:grid;place-items:center;color:var(--purple);background:#f3eefe}
 .altrow img,.altph{width:42px;height:42px;object-fit:contain;border-radius:9px;border:1px solid var(--br);background:#fff;flex-shrink:0}
 .altt{flex:1;min-width:0}
 .altn{font-size:12.5px;font-weight:600;line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical}
@@ -674,12 +676,27 @@ function renderProdCard(p){
     ?`<span class="price">$${esc(String(p.price)).replace(/^\$/,'')}</span>`
     :`<span class="pnv">Price not verified</span>`;
   card.innerHTML=`${p.image?`<img class="pimg" src="${esc(p.image)}" onerror="this.remove()">`:''}
-    <div class="pbody"><div class="pt">${esc((p.title||'').replace(/^Amazon\.com\s*:\s*/i,'').split(':')[0])}</div>
+    <div class="pbody"><div class="pt">${esc((p.title||'').replace(/^Amazon\.com\s*:\s*/i,'').slice(0,110))}</div>
     <div class="pr">${priceHtml}<span class="psrc">Amazon</span>
     <a href="${esc(p.url||'#')}" target="_blank">View product &rarr;</a></div>
     ${p.suspicious?'<div class="pwarn">Listing may be unreliable</div>':''}</div>`;
   $('msgs').classList.add('on');$('msgs').appendChild(card);
   dockInput();
+}
+function addRetailerActions(actions){
+  if(!actions||!actions.length)return;
+  const old=document.querySelector('.retailers');if(old)old.remove();
+  const div=document.createElement('div');div.className='alts retailers';
+  div.innerHTML='<div class="alts-title">Places I\'d check</div>'+actions.slice(0,6).map(a=>`
+    <a class="altrow" href="${esc(a.url)}" target="_blank" rel="noopener">
+      <div class="altph rticon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 7h18l-2 12H5L3 7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 7a4 4 0 018 0" stroke="currentColor" stroke-width="2"/></svg></div>
+      <div class="altt">
+        <div class="altn">${esc(a.retailer)}</div>
+        <div class="altm">${esc(a.reason||'Check price')}</div>
+      </div>
+      <span class="use">Open &rarr;</span>
+    </a>`).join('');
+  $('msgs').appendChild(div);dockInput();
 }
 function addAlternatives(alts){
   const div=document.createElement('div');div.className='alts';
@@ -890,6 +907,7 @@ async function sendChat(){
     (d.products||[]).forEach(p=>{renderProdCard(p);convoLog.push({t:'prod',p});});
     if(d.session_id)sessionId=d.session_id;
     addMsg('bot',d.answer,d.sources);history.push({role:'assistant',content:d.answer});
+    if(d.retailer_actions&&d.retailer_actions.length)addRetailerActions(d.retailer_actions);
     if(d.alternative_products&&d.alternative_products.length)addAlternatives(d.alternative_products);
     if(d.relevant_creator_content&&d.relevant_creator_content.length)addRelated(d.relevant_creator_content[0]);
     if(d.follow_ups&&d.follow_ups.length)addFollowUps(d.follow_ups);
