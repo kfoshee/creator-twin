@@ -57,7 +57,9 @@ MODES = ("smart", "fast", "preview", "product", "full")
 # Claude calls are ZERO in every default mode. smart (default) uses up to 3 small
 # Gemini calls for a real starter taste model; fast = instant zero-AI demo.
 MODE_CFG = {
-    "smart":   dict(fetch=50,   deep_pass=8,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6, gemini=True),
+    # smart (default): a REAL starter twin — 100 items, 20 transcripts, Gemini
+    # deep-read of the richest items. ~60-90s of genuine work, Claude 0.
+    "smart":   dict(fetch=100,  deep_pass=20, summaries=16, llm_calls=0,    comments=False, enrich=False, suggestions=6, gemini=True),
     "fast":    dict(fetch=25,   deep_pass=0,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6, gemini=False),
     "preview": dict(fetch=25,   deep_pass=0,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6, gemini=False),
     "product": dict(fetch=100,  deep_pass=0,  summaries=0,  llm_calls=0,    comments=False, enrich=False, suggestions=6, gemini=True),
@@ -151,7 +153,7 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="smart",
     from creator_twin.intelligence.ai_budget import AIBudget, clear as budget_clear, install as budget_install
     budget = AIBudget(max_llm_calls=mcfg["llm_calls"],
                       max_items_to_summarize=mcfg["summaries"],
-                      max_transcripts=min(deep_pass, 5),
+                      max_transcripts=min(deep_pass, 20),
                       comments_enabled=not skip_comments)
     budget_install(budget)
 
@@ -298,12 +300,15 @@ def fast_build(sources: dict, creator_id=None, intake_file=None, mode="smart",
 
         n_synth = 0
         if mcfg["summaries"]:
-            report("catalog", f"Learning from the top {min(mcfg['summaries'], n_selected)} product items...", 0.55)
+            report("catalog", f"Deep-reading the top {min(mcfg['summaries'], n_selected)} items...", 0.55)
+            # smart mode: deep_summary routes to Gemini first; Claude stays blocked
+            # by the zero-call budget, so failures degrade instead of billing.
             n_synth = generate_catalog(creator_id, force_refresh=force_refresh, scope="fast",
                                        batch_limit=mcfg["summaries"],
                                        progress=lambda d: report("catalog", d, 0.66),
-                                       progress_label="Starter taste",
-                                       task="deep_summary" if mode == "full" else "content_summary")
+                                       progress_label="Learning product takes",
+                                       task="deep_summary" if mode in ("full", "smart") else "content_summary",
+                                       deadline=t0 + (BUILD_TIME_CAP_SECONDS - 20 if mode != "full" else 10**6))
 
         report("suggestions", "Building suggestion set...", 0.70)
         n_sugg = 0

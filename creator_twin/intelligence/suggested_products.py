@@ -57,6 +57,10 @@ _INVALID_RX = [
     # bare retailer (+number) fragments: "Publix 5", "TARGET 4", "CVS"
     re.compile(r"^(publix|cvs|walgreens|target|walmart|costco|aldi|kroger|ulta|sephora|"
                r"amazon|dollar tree|dollar general|sam's club)\s*#?\d*\s*$", re.I),
+    # headline fragments with drama verbs: "NVIDIA Becomes Apple", "X Just Slapped Y"
+    # (no "beats" — Beats is a brand)
+    re.compile(r"\b(becomes?|became|slapp?ed|destroys?|destroyed|kills?|killed|"
+               r"crushes|crushed|shocks?|shocked|exposes?|exposed|ruined)\b", re.I),
 ]
 _GENERIC_SINGLE = {"video", "post", "reel", "short", "upload", "deal", "deals", "stuff",
                    "things", "items", "finds", "find", "products", "product", "amazon",

@@ -82,6 +82,12 @@ def build_starter_taste_model(creator_id: str):
             '"likely_recommendation_patterns":["..."],"what_to_avoid":["..."],"confidence":0.0}',
             system=TASTE_SYSTEM, task="gemini_starter_taste", creator_id=creator_id)
 
+        guidance = {}
+    except GeminiError as e:
+        log.warning("gemini taste model failed: %s", e)
+        return None, None, "deterministic_starter"
+
+    try:
         guidance = gcomplete(
             f"Creator: {name} | niche: {taste.get('creator_niche', '')}\n"
             f"Product world: {', '.join((taste.get('product_world') or [])[:6])}\n"
@@ -93,8 +99,9 @@ def build_starter_taste_model(creator_id: str):
             '"answer_do":["..."],"answer_dont":["..."]}',
             system=GUIDANCE_SYSTEM, task="gemini_starter_guidance", creator_id=creator_id)
     except GeminiError as e:
-        log.warning("gemini taste model failed: %s", e)
-        return None, None, "deterministic_starter"
+        # taste succeeded — keep the gemini starter and use default guidance
+        log.warning("guidance call failed (%s) — keeping taste model with default guidance", e)
+        guidance = {}
 
     _cache_put(f"taste:{creator_id}:{chash}", {"taste": taste, "guidance": guidance})
     return taste, guidance, "gemini_starter"

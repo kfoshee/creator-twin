@@ -303,7 +303,7 @@ button{font-family:inherit}
   <div class="buildwrap"><div class="bcard">
     <div class="spinner" id="b-spin"></div>
     <div class="buildtitle" id="b-title">Building quick twin</div>
-    <div class="builddetail" id="b-detail">Building a starter twin from recent content. Usually takes about a minute.</div>
+    <div class="builddetail" id="b-detail">Reading their recent content, transcripts and product signals. Takes about 60 to 90 seconds.</div>
     <div class="pwrap"><div class="pbar"><i id="b-bar"></i></div><div class="ppct" id="b-pct">0%</div></div>
     <div class="eta" id="b-eta"></div>
     <div class="steps" id="b-steps"></div>
@@ -564,11 +564,16 @@ async function poll(runId){
   const p=d.progress||0,pct=Math.round(p*100);
   $('b-pct').textContent=pct+'%';$('b-bar').style.width=pct+'%';
   $('b-detail').textContent=d.step_detail||'';
-  // ETA from observed rate
-  if(p>0.04&&p<1&&d.status==='running'){
+  // ETA: expected ~80s deep build, corrected by the observed rate
+  if(p<1&&d.status==='running'){
     const elapsed=(Date.now()-buildStart)/1000;
-    const left=Math.max(elapsed*(1-p)/p,10);
-    $('b-eta').textContent='first version in about '+(left<90?Math.ceil(left/10)*10+' seconds':Math.ceil(left/60)+' min');
+    const expected=80;
+    const rateLeft=p>0.2?elapsed*(1-p)/p:0;
+    const left=Math.max(expected-elapsed,rateLeft,8);
+    $('b-eta').textContent=p>=0.92?'finishing up…'
+      :left>=90?'about '+Math.ceil(left/60)+' min left'
+      :left>=55?'about a minute left'
+      :'about '+Math.max(Math.ceil(left/10)*10,10)+' seconds left';
   }else $('b-eta').textContent='';
   const cnt=(id,v)=>{$(id).textContent=v>0?v.toLocaleString():(d.status==='running'?'finding…':'0');
     $(id).style.fontSize=v>0?'':'12px'};

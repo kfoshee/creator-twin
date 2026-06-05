@@ -59,12 +59,16 @@ def generate_qa_pairs(creator_id: str, n=20) -> int:
 
 def generate_catalog(creator_id: str, force_refresh=False, progress=None,
                      scope: str = "fast", batch_limit: int = None,
-                     progress_label: str = "Catalog", task: str = "content_summary") -> int:
+                     progress_label: str = "Catalog", task: str = "content_summary",
+                     deadline: float = None) -> int:
     """Summarize content items.
 
     scope: 'fast' = selected_for_fast_build only; 'pending' = unprocessed
     remainder (background enrichment); 'all' = everything.
+    deadline: unix time after which no NEW batch starts (build time cap);
+    skipped items simply stay pending for enrichment.
     """
+    import time as _time
     profile = get_fingerprint(creator_id) or {}
     fp = fingerprint_summary(profile)
 
@@ -90,6 +94,10 @@ def generate_catalog(creator_id: str, force_refresh=False, progress=None,
 
     generated = 0
     for batch in batches:
+        if deadline and _time.time() > deadline:
+            log.info("catalog deadline reached — %d items stay pending for enrichment",
+                     len(todo) - generated)
+            break
         block = ""
         for it in batch:
             block += (f"\nCONTENT_ID: {it['content_id']}\nPLATFORM: {it['platform']} ({it['content_type']})"

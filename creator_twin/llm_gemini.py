@@ -41,9 +41,23 @@ def complete_json(prompt: str, system: str = "", task: str = "gemini_build",
                                  "temperature": 0.3}}
     if system:
         body["systemInstruction"] = {"parts": [{"text": system}]}
-    r = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_BUILD_MODEL}:generateContent",
-        params={"key": GEMINI_API_KEY}, json=body, timeout=60)
+    # per-minute rate limits (429) are normal on the free tier mid-build: wait
+    # and retry — honest build time, not a fake delay. Daily-quota 429s won't
+    # recover, so fail fast and let callers degrade.
+    r = None
+    for attempt in range(3):
+        r = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_BUILD_MODEL}:generateContent",
+            params={"key": GEMINI_API_KEY}, json=body, timeout=60)
+        if r.status_code != 429:
+            break
+        if re.search(r"PerDay|per day|daily", r.text or "", re.I):
+            raise GeminiError(f"gemini daily quota exhausted: {r.text[:150]}")
+        if attempt < 2:
+            import time as _t
+            wait = 12 * (attempt + 1)
+            log.info("gemini 429 — retrying in %ds (%s)", wait, task)
+            _t.sleep(wait)
     if r.status_code != 200:
         raise GeminiError(f"gemini {r.status_code}: {r.text[:200]}")
     text = "".join(p.get("text", "") for p in r.json()["candidates"][0]["content"]["parts"])
